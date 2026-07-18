@@ -1,0 +1,57 @@
+"""Leitura e tipagem da planilha de pedidos."""
+
+import logging
+from pathlib import Path
+
+import pandas as pd
+
+logger = logging.getLogger("leitor")
+
+# Colunas que o restante do pipeline assume existirem. Falta de qualquer uma
+# é erro estrutural que deve parar a execução cedo, com mensagem clara.
+COLUNAS_ESPERADAS = [
+    "id_pedido", "data_pedido", "cliente", "email", "produto", "sku",
+    "quantidade", "valor_unitario", "valor_total", "canal", "endereco",
+    "prazo_entrega",
+]
+
+COLUNAS_DATA = ["data_pedido", "prazo_entrega"]
+COLUNAS_NUMERICAS = ["quantidade", "valor_unitario", "valor_total"]
+
+
+def ler_planilha(caminho: Path) -> pd.DataFrame:
+    """Lê a planilha de pedidos e retorna um DataFrame tipado.
+
+    Converte datas para datetime e valores para float. Levanta ValueError se
+    alguma coluna esperada estiver ausente.
+    """
+    caminho = Path(caminho)
+    try:
+        df = pd.read_excel(caminho, engine="openpyxl")
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"Arquivo não encontrado: {caminho}. "
+            "Execute primeiro: python -m src.gerar_dados"
+        ) from exc
+
+    faltantes = [c for c in COLUNAS_ESPERADAS if c not in df.columns]
+    if faltantes:
+        raise ValueError(
+            "Colunas obrigatórias ausentes na planilha: "
+            + ", ".join(faltantes)
+        )
+
+    # Datas: coerce transforma valores inválidos em NaT em vez de estourar,
+    # deixando a decisão de rejeição para o validador.
+    for coluna in COLUNAS_DATA:
+        df[coluna] = pd.to_datetime(df[coluna], errors="coerce")
+
+    # Numéricos: idem — texto/branco vira NaN e é tratado na validação.
+    for coluna in COLUNAS_NUMERICAS:
+        df[coluna] = pd.to_numeric(df[coluna], errors="coerce")
+
+    logger.info(
+        "Planilha lida: %d linhas, %d colunas (%s)",
+        len(df), df.shape[1], caminho,
+    )
+    return df
