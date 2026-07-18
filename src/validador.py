@@ -10,16 +10,18 @@ from datetime import date
 
 import pandas as pd
 
+from src.config import config
+
 logger = logging.getLogger("validador")
 
-# Regex simples: exige texto antes do @, texto após o @ e um ponto no domínio.
-# Não busca conformidade total com RFC — só barrar os casos grosseiros.
-PADRAO_EMAIL = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
+# Regex e tolerância vêm da config externa (config.yaml), com fallback embutido.
+# Regex compilada uma vez: exige texto antes do @, texto após e ponto no domínio.
+PADRAO_EMAIL = re.compile(config.regex_email)
 
 # Tolerância monetária: soma de floats acumula erro de arredondamento, então
-# uma diferença de até R$0.02 entre valor_total e quantidade*unitário é aceita
-# em vez de gerar falso positivo.
-TOLERANCIA_VALOR = 0.02
+# uma diferença pequena entre valor_total e quantidade*unitário é aceita em vez
+# de gerar falso positivo. Valor configurável em config.yaml.
+TOLERANCIA_VALOR = config.tolerancia_valor
 
 
 def _validar_linha(pedido: pd.Series, ids_vistos: set[str], hoje: date) -> list[str]:

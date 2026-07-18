@@ -5,15 +5,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.config import config
+
 logger = logging.getLogger("leitor")
 
-# Colunas que o restante do pipeline assume existirem. Falta de qualquer uma
-# é erro estrutural que deve parar a execução cedo, com mensagem clara.
-COLUNAS_ESPERADAS = [
-    "id_pedido", "data_pedido", "cliente", "email", "produto", "sku",
-    "quantidade", "valor_unitario", "valor_total", "canal", "endereco",
-    "prazo_entrega",
-]
+# Colunas que o restante do pipeline assume existirem, vindas da config externa.
+# Falta de qualquer uma é erro estrutural que deve parar a execução cedo.
+COLUNAS_ESPERADAS = config.colunas_obrigatorias
 
 COLUNAS_DATA = ["data_pedido", "prazo_entrega"]
 COLUNAS_NUMERICAS = ["quantidade", "valor_unitario", "valor_total"]

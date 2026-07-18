@@ -1,0 +1,45 @@
+# Configuração do Validador de Pedidos GoCase
+# ------------------------------------------------------------------
+# Edite este arquivo para ajustar regras SEM tocar no código.
+# Se o arquivo estiver ausente ou incompleto, o sistema usa os
+# valores-padrão embutidos em src/config.py (nenhuma quebra).
+
+validacao:
+  # Diferença máxima aceita entre valor_total e quantidade*valor_unitario.
+  # Cobre erro de arredondamento de float; aumente se sua fonte tiver ruído.
+  tolerancia_valor: 0.02
+
+  # Regex de e-mail. Mínimo: texto@texto.dominio.
+  regex_email: '^[^@]+@[^@]+\.[^@]+$'
+
+  # Colunas que a planilha DEVE conter. Faltar qualquer uma para a leitura.
+  colunas_obrigatorias:
+    - id_pedido
+    - data_pedido
+    - cliente
+    - email
+    - produto
+    - sku
+    - quantidade
+    - valor_unitario
+    - valor_total
+    - canal
+    - endereco
+    - prazo_entrega
+
+prioridade:
+  # Faixas por dias restantes até o prazo. [min, max] inclusivo.
+  # max nulo = sem limite superior. A ordem aqui define a fila de produção.
+  faixas:
+    - nome: URGENTE
+      min: 0
+      max: 2
+    - nome: ALTA
+      min: 3
+      max: 5
+    - nome: NORMAL
+      min: 6
+      max: 10
+    - nome: BAIXA
+      min: 11
+      max: null

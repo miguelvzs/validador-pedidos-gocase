@@ -5,22 +5,21 @@ from datetime import date
 
 import pandas as pd
 
+from src.config import config
+
 logger = logging.getLogger("organizador")
 
-# Ordem de urgência usada tanto na classificação quanto na ordenação final.
-# pd.Categorical com esta ordem garante que URGENTE venha antes de BAIXA.
-ORDEM_PRIORIDADE = ["URGENTE", "ALTA", "NORMAL", "BAIXA"]
+# Ordem de urgência vem da config (config.yaml). pd.Categorical com esta ordem
+# garante que a fila respeite as faixas definidas pelo gestor.
+ORDEM_PRIORIDADE = config.ordem_prioridade
 
 
 def _classificar(dias_restantes: int) -> str:
-    """Mapeia dias restantes até o prazo para uma faixa de prioridade."""
-    if dias_restantes <= 2:
-        return "URGENTE"
-    if dias_restantes <= 5:
-        return "ALTA"
-    if dias_restantes <= 10:
-        return "NORMAL"
-    return "BAIXA"
+    """Mapeia dias restantes até o prazo para uma faixa de prioridade.
+
+    Delega à config: as faixas são definidas em config.yaml, não no código.
+    """
+    return config.classificar_prioridade(dias_restantes)
 
 
 def organizar_pedidos(df_validos: pd.DataFrame) -> pd.DataFrame:
