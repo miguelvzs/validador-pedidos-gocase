@@ -26,6 +26,7 @@ Funciona em **dois modos**:
 - [Formato da planilha de entrada](#formato-da-planilha-de-entrada)
 - [Regras de validação](#regras-de-validação)
 - [Classificação de prioridade](#classificação-de-prioridade)
+- [Configuração (config.yaml)](#configuração-configyaml)
 - [Relatórios gerados](#relatórios-gerados)
 - [Modos de uso](#modos-de-uso)
 - [Decisões de design](#decisões-de-design)
@@ -37,6 +38,9 @@ Funciona em **dois modos**:
 ---
 
 ## Início rápido
+
+Execute **de dentro da pasta do projeto** — os comandos falham com
+`No such file or directory` se rodados de outro diretório (ex.: `C:\Users\SeuNome`).
 
 ```bash
 pip install -r requirements.txt --break-system-packages
@@ -176,6 +180,30 @@ antes (`dias_restantes` crescente).
 
 ---
 
+## Configuração (config.yaml)
+
+As regras de negócio ficam **externas ao código**, em `config.yaml` — um gestor
+não-técnico ajusta limites sem tocar em Python:
+
+```yaml
+validacao:
+  tolerancia_valor: 0.02          # diferença aceita em valor_total
+  regex_email: '^[^@]+@[^@]+\.[^@]+$'
+  colunas_obrigatorias: [ ... ]   # colunas exigidas na planilha
+prioridade:
+  faixas:                         # dias até o prazo → faixa
+    - { nome: URGENTE, min: 0, max: 2 }
+    - { nome: ALTA,    min: 3, max: 5 }
+    - { nome: NORMAL,  min: 6, max: 10 }
+    - { nome: BAIXA,   min: 11, max: null }   # null = sem teto
+```
+
+Se o arquivo faltar ou uma chave estiver ausente, o sistema cai nos **padrões
+embutidos** (`src/config.py`) — nunca quebra por config incompleta. Muda o
+comportamento da validação e da priorização sem redeploy.
+
+---
+
 ## Relatórios gerados
 
 Todos em `output/`.
@@ -205,6 +233,7 @@ Assim o operador abre `output/` e vê apenas as 3 planilhas que importam.
 ### 1. Terminal (avaliação)
 
 ```bash
+cd C:\Users\kenne\Documents\dev\validador-pedidos-gocase
 python main.py
 ```
 
@@ -239,17 +268,36 @@ Nenhum terminal ou comando necessário.
 python mcp_server.py
 ```
 
-Fala **stdio** (JSON-RPC) e expõe 3 tools:
+Fala **stdio** (JSON-RPC) e expõe 5 tools + 1 prompt:
 
 | Tool | Função |
 |---|---|
 | `gerar_dados_exemplo` | Gera a planilha simulada (uso de teste/demo). |
 | `validar_pedidos` | Executa o fluxo completo e retorna o resumo formatado. |
 | `consultar_resumo` | Retorna o resumo da última execução, sem reprocessar. |
+| `analisar_rejeitados` | Prepara os rejeitados para a IA corrigir (dados, motivos, sugestões mecânicas). |
+| `revalidar_com_correcoes` | Aplica as correções da IA e revalida o lote, mostrando antes → depois. |
 
 Para conectar no Claude Desktop, aponte a config de MCP para o comando
 `python mcp_server.py` na raiz do projeto. O usuário então pede em linguagem
 natural (ex.: *"valide os pedidos da planilha"*) e a IA chama a tool.
+
+#### Camada de IA — correção assistida de rejeitados
+
+O servidor não embute um modelo próprio nem exige chave de API: a **IA conectada
+é o cérebro**. O fluxo (guiado pelo prompt `corrigir_pedidos_rejeitados`) é:
+
+1. `analisar_rejeitados` devolve cada pedido barrado, seus motivos e as
+   **sugestões mecânicas** já resolvidas por regra (recalcular `valor_total`,
+   remover espaços, normalizar e-mail).
+2. A IA propõe as **correções semânticas** — inferir um nome digitado errado,
+   completar um e-mail, ajustar uma quantidade implausível. Dados que não dão
+   para deduzir (cliente totalmente vazio) são sinalizados para revisão humana,
+   não inventados.
+3. `revalidar_com_correcoes` aplica as correções à planilha de origem, revalida
+   o lote inteiro e relata quantos pedidos foram **recuperados**.
+
+Exemplo real: 2 e-mails inválidos corrigidos → rejeitados 10 → 8, válidos 40 → 42.
 
 ---
 
@@ -318,15 +366,18 @@ validador-pedidos-gocase/
 ├── output/                  ← 3 planilhas do operador
 │   └── _sistema/            ← log + cache JSON (artefatos internos)
 ├── src/
+│   ├── config.py            ← carrega config.yaml (com fallback embutido)
 │   ├── gerar_dados.py       ← fixture de teste/demo (NÃO é produção)
 │   ├── leitor.py            ← leitura e tipagem da planilha
 │   ├── validador.py         ← regras de validação
 │   ├── organizador.py       ← classificação por prioridade
 │   ├── relatorio.py         ← geração dos Excel formatados
 │   ├── integracoes.py       ← abstração de entrada/saída (pronta para MCP)
+│   ├── assistente_ia.py     ← camada de IA: correção assistida via MCP
 │   └── agente.py            ← orquestrador do fluxo
+├── config.yaml              ← regras de negócio editáveis (sem tocar código)
 ├── main.py                  ← entrada standalone (terminal)
-├── mcp_server.py            ← entrada MCP Server
+├── mcp_server.py            ← entrada MCP Server (5 tools + prompt)
 ├── testar.py                ← testes de fumaça
 ├── Validar Pedidos.bat      ← lançador para usuário não-técnico
 ├── requirements.txt
@@ -338,7 +389,8 @@ validador-pedidos-gocase/
 ## Requisitos
 
 - Python 3.10+
-- `pandas >= 2.0.0`, `openpyxl >= 3.1.0`, `mcp >= 1.0.0` (ver `requirements.txt`)
+- `pandas >= 2.0.0`, `openpyxl >= 3.1.0`, `mcp >= 1.0.0`, `pyyaml >= 6.0`
+  (ver `requirements.txt`)
 
 Codificação UTF-8 em toda operação de arquivo. Type hints e docstrings em
 português em todo o código.
