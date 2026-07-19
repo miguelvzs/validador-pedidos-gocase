@@ -32,11 +32,21 @@ def ler_planilha(caminho: Path) -> pd.DataFrame:
             "Execute primeiro: python -m src.gerar_dados"
         ) from exc
 
+    # Renomeia colunas da planilha de origem para os nomes canônicos ANTES da
+    # checagem: permite processar um export real (cabeçalhos diferentes) sem
+    # editar código — basta preencher mapa_colunas no config.yaml.
+    mapa = config.mapa_colunas
+    if mapa:
+        df = df.rename(columns=mapa)
+        logger.info("Mapa de colunas aplicado: %s", mapa)
+
     faltantes = [c for c in COLUNAS_ESPERADAS if c not in df.columns]
     if faltantes:
         raise ValueError(
             "Colunas obrigatórias ausentes na planilha: "
             + ", ".join(faltantes)
+            + ". Se sua planilha usa outros nomes, configure 'mapa_colunas' "
+            "no config.yaml."
         )
 
     # Datas: coerce transforma valores inválidos em NaT em vez de estourar,

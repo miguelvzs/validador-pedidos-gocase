@@ -6,6 +6,7 @@ cores por prioridade, bordas e larguras ajustadas — sem dashboards elaborados.
 
 import logging
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +16,45 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 logger = logging.getLogger("relatorio")
+
+# Quantas vezes tentar mover o arquivo final e o intervalo entre tentativas.
+# Dá tempo do gestor fechar a planilha aberta no Excel antes de desistir.
+_RETRY_TENTATIVAS = 3
+_RETRY_ESPERA_SEG = 4
+
+
+def _mover_com_retry(origem: Path, destino: Path) -> None:
+    """Move o arquivo temporário para o destino final, tolerando lock do Excel.
+
+    Se o destino estiver aberto no Excel (PermissionError), avisa e tenta de
+    novo algumas vezes; só então falha com mensagem clara. Escrever num
+    temporário primeiro garante que um relatório antigo nunca fica corrompido
+    pela metade quando o alvo está travado.
+    """
+    for tentativa in range(1, _RETRY_TENTATIVAS + 1):
+        try:
+            os.replace(origem, destino)
+            return
+        except PermissionError:
+            if tentativa < _RETRY_TENTATIVAS:
+                logger.warning(
+                    "'%s' parece aberto no Excel. Feche-o. Nova tentativa "
+                    "%d/%d em %ds...",
+                    destino.name, tentativa, _RETRY_TENTATIVAS, _RETRY_ESPERA_SEG,
+                )
+                time.sleep(_RETRY_ESPERA_SEG)
+            else:
+                # Remove o temporário para não deixar lixo e falha com instrução.
+                Path(origem).unlink(missing_ok=True)
+                raise PermissionError(
+                    f"Não consegui atualizar '{destino.name}': o arquivo está "
+                    "aberto (provavelmente no Excel). Feche-o e rode novamente."
+                )
+
+
+def _caminho_temp(caminho: Path) -> Path:
+    """Caminho temporário irmão do destino, para escrita atômica."""
+    return caminho.with_name(caminho.stem + ".tmp" + caminho.suffix)
 
 # --- Paleta e estilos compartilhados ---
 COR_CABECALHO = "3B5BDB"
@@ -69,8 +109,9 @@ def _formatar_monetario(ws: Worksheet, df: pd.DataFrame) -> None:
 def gerar_relatorio_validados(df: pd.DataFrame, caminho: Path) -> None:
     """Gera Excel com pedidos válidos, formatados por prioridade."""
     os.makedirs(caminho.parent, exist_ok=True)
+    temp = _caminho_temp(caminho)
 
-    with pd.ExcelWriter(caminho, engine="openpyxl") as writer:
+    with pd.ExcelWriter(temp, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Pedidos Válidos")
         ws = writer.sheets["Pedidos Válidos"]
 
@@ -97,14 +138,16 @@ def gerar_relatorio_validados(df: pd.DataFrame, caminho: Path) -> None:
         _ajustar_larguras(ws, df)
         ws.freeze_panes = "A2"  # mantém o cabeçalho visível ao rolar
 
+    _mover_com_retry(temp, caminho)
     logger.info("Relatório de válidos gerado: %s (%d linhas)", caminho, len(df))
 
 
 def gerar_relatorio_rejeitados(df: pd.DataFrame, caminho: Path) -> None:
     """Gera Excel com pedidos rejeitados e motivos de rejeição."""
     os.makedirs(caminho.parent, exist_ok=True)
+    temp = _caminho_temp(caminho)
 
-    with pd.ExcelWriter(caminho, engine="openpyxl") as writer:
+    with pd.ExcelWriter(temp, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Pedidos Rejeitados")
         ws = writer.sheets["Pedidos Rejeitados"]
 
@@ -128,6 +171,7 @@ def gerar_relatorio_rejeitados(df: pd.DataFrame, caminho: Path) -> None:
         _ajustar_larguras(ws, df)
         ws.freeze_panes = "A2"
 
+    _mover_com_retry(temp, caminho)
     logger.info("Relatório de rejeitados gerado: %s (%d linhas)", caminho, len(df))
 
 
@@ -136,6 +180,7 @@ def gerar_resumo_execucao(df_validos: pd.DataFrame, df_rejeitados: pd.DataFrame,
                           caminho: Path) -> None:
     """Gera Excel com resumo consolidado da execução."""
     os.makedirs(caminho.parent, exist_ok=True)
+    temp = _caminho_temp(caminho)
 
     total = len(df_original)
     n_validos = len(df_validos)
@@ -185,7 +230,7 @@ def gerar_resumo_execucao(df_validos: pd.DataFrame, df_rejeitados: pd.DataFrame,
 
     linhas.append(("Tempo de execução (segundos)", f"{tempo_execucao:.2f}"))
 
-    with pd.ExcelWriter(caminho, engine="openpyxl") as writer:
+    with pd.ExcelWriter(temp, engine="openpyxl") as writer:
         # Cria a planilha com o cabeçalho; escrevemos as linhas manualmente
         # para poder mesclar as separadoras.
         cabecalho = pd.DataFrame(columns=["Métrica", "Valor"])
@@ -222,4 +267,5 @@ def gerar_resumo_execucao(df_validos: pd.DataFrame, df_rejeitados: pd.DataFrame,
         ws.column_dimensions["A"].width = 42
         ws.column_dimensions["B"].width = 28
 
+    _mover_com_retry(temp, caminho)
     logger.info("Resumo de execução gerado: %s", caminho)

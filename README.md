@@ -189,6 +189,7 @@ não-técnico ajusta limites sem tocar em Python:
 validacao:
   tolerancia_valor: 0.02          # diferença aceita em valor_total
   regex_email: '^[^@]+@[^@]+\.[^@]+$'
+  mapa_colunas: {}                # renomeia colunas da SUA planilha → canônicas
   colunas_obrigatorias: [ ... ]   # colunas exigidas na planilha
 prioridade:
   faixas:                         # dias até o prazo → faixa
@@ -199,8 +200,19 @@ prioridade:
 ```
 
 Se o arquivo faltar ou uma chave estiver ausente, o sistema cai nos **padrões
-embutidos** (`src/config.py`) — nunca quebra por config incompleta. Muda o
+embutidos** (`src/config.py`) — nunca quebra por config incompleta. YAML
+inválido é avisado no console (suas mudanças são ignoradas). Muda o
 comportamento da validação e da priorização sem redeploy.
+
+**Planilha com outros cabeçalhos?** Preencha `mapa_colunas` para processar um
+export real do e-commerce/ERP sem editar código:
+
+```yaml
+mapa_colunas:
+  "Pedido": id_pedido
+  "Nome do Cliente": cliente
+  "Qtd": quantidade
+```
 
 ---
 
@@ -260,7 +272,9 @@ Use **`Validar Pedidos.bat`**:
 2. Duplo-clique no `.bat`.
 3. A janela processa, mostra o resumo e fica aberta; relatórios em `output/`.
 
-Nenhum terminal ou comando necessário.
+Nenhum terminal ou comando necessário. O `.bat` **detecta o Python** (orienta a
+instalar se faltar) e **instala as dependências no primeiro uso** — o gestor não
+precisa preparar o ambiente. Se algo falhar, a janela mostra o erro e não fecha.
 
 ### 3. MCP Server (integração com IA)
 
@@ -350,10 +364,12 @@ Saída esperada: `Todos os 8 testes passaram ✓`.
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
-| `Arquivo não encontrado: data/...` | Planilha de entrada ausente (fora do `main.py`, que a gera). | Rode `python -m src.gerar_dados` ou coloque a planilha em `data/`. |
-| `Colunas obrigatórias ausentes` | Planilha sem uma coluna esperada. | Ajuste a planilha ao [formato de entrada](#formato-da-planilha-de-entrada). |
+| `Python nao encontrado` (no `.bat`) | Python não instalado ou fora do PATH. | Instale Python 3.10+ marcando "Add Python to PATH". O `.bat` também tenta o launcher `py`. |
+| `Colunas obrigatórias ausentes` | Planilha real com cabeçalhos diferentes. | Preencha `mapa_colunas` no [config.yaml](#configuração-configyaml) mapeando seus nomes para os canônicos. |
+| `Não consegui atualizar '...xlsx'` | Relatório aberto no Excel trava a escrita. | Feche o arquivo no Excel; o sistema tenta 3× com aviso antes de falhar. |
+| Relatórios com dados que parecem fictícios | Planilha real ausente → `main.py` gerou exemplo. | Aviso em destaque no console indica isso; coloque a planilha real em `data/` e rode de novo. |
+| `[AVISO] config.yaml inválido` | Erro de indentação no YAML. | Suas mudanças foram ignoradas (usou padrões); corrija a indentação. |
 | Acentos tortos no console (`execu��o`) | Terminal antigo em cp1252. | Já tratado no código; se persistir, rode `chcp 65001` antes. |
-| `.bat` fecha sozinho | Erro antes do `pause`. | Rode `python main.py` no terminal para ver o erro completo. |
 | Cliente MCP não responde | Log poluindo `stdout`. | Já tratado (log vai para `stderr`); verifique se não há `print()` solto. |
 
 ---

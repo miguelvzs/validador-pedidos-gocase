@@ -12,6 +12,18 @@ validacao:
   # Regex de e-mail. Mínimo: texto@texto.dominio.
   regex_email: '^[^@]+@[^@]+\.[^@]+$'
 
+  # Mapa de colunas: renomeia os nomes da SUA planilha para os nomes que o
+  # sistema espera. Use quando o export do e-commerce/ERP tiver cabeçalhos
+  # diferentes. Formato "Nome na sua planilha": nome_esperado.
+  # Deixe vazio ({}) se a planilha já usa os nomes canônicos.
+  mapa_colunas: {}
+  # Exemplo:
+  # mapa_colunas:
+  #   "Pedido": id_pedido
+  #   "Nome do Cliente": cliente
+  #   "E-mail": email
+  #   "Qtd": quantidade
+
   # Colunas que a planilha DEVE conter. Faltar qualquer uma para a leitura.
   colunas_obrigatorias:
     - id_pedido

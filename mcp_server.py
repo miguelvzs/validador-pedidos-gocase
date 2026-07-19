@@ -6,6 +6,7 @@ pode se conectar e chamar as tools deste servidor.
 """
 
 import json
+import shutil
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -72,6 +73,10 @@ def revalidar_com_correcoes(correcoes: list[dict], caminho_entrada: str = ENTRAD
     rejeitados_antes = _ler_cache().get("total_rejeitados")
 
     df_corrigido = aplicar_correcoes(correcoes, caminho)
+    # Backup antes de sobrescrever: a origem é dado real: guarda uma cópia .bak
+    # para que uma correção equivocada da IA seja reversível.
+    if caminho.exists():
+        shutil.copy2(caminho, caminho.with_suffix(caminho.suffix + ".bak"))
     # A planilha de origem passa a refletir as correções (fonte da verdade no
     # ciclo RPA). O fluxo então revalida tudo e regenera os relatórios.
     df_corrigido.to_excel(caminho, index=False, engine="openpyxl")

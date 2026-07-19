@@ -9,6 +9,7 @@ embutidos aqui: nunca quebra por config incompleta.
 """
 
 import logging
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ _PADROES: dict[str, Any] = {
     "validacao": {
         "tolerancia_valor": 0.02,
         "regex_email": r"^[^@]+@[^@]+\.[^@]+$",
+        "mapa_colunas": {},
         "colunas_obrigatorias": [
             "id_pedido", "data_pedido", "cliente", "email", "produto", "sku",
             "quantidade", "valor_unitario", "valor_total", "canal", "endereco",
@@ -58,6 +60,11 @@ class Config:
     @property
     def colunas_obrigatorias(self) -> list[str]:
         return list(self._dados["validacao"]["colunas_obrigatorias"])
+
+    @property
+    def mapa_colunas(self) -> dict[str, str]:
+        """Renomeação de colunas da planilha de origem para os nomes canônicos."""
+        return dict(self._dados["validacao"].get("mapa_colunas") or {})
 
     # --- Prioridade ---
     @property
@@ -109,6 +116,15 @@ def carregar_config(caminho: Path = CAMINHO_CONFIG) -> Config:
             logger.info("Configuração carregada de %s", caminho)
         except (yaml.YAMLError, OSError) as exc:
             logger.warning("Falha ao ler %s (%s). Usando padrões embutidos.", caminho, exc)
+            # Aviso direto no stderr: este código roda no import, antes do
+            # logging estar configurado, então o gestor precisa ver que a
+            # edição do YAML foi IGNORADA e o sistema voltou aos padrões.
+            print(
+                f"[AVISO] config.yaml inválido ({exc}). "
+                "Suas alterações foram IGNORADAS; usando valores-padrão. "
+                "Verifique a indentação do arquivo.",
+                file=sys.stderr,
+            )
     else:
         logger.info("config.yaml ausente. Usando padrões embutidos.")
     return Config(dados)
