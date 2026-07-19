@@ -20,3 +20,12 @@ services:
       # TTL de limpeza dos jobs (segundos). 1 hora.
       - key: JOBS_TTL_SEGUNDOS
         value: "3600"
+      # Teto de rejeitados por chamada de correção automática (controle de custo).
+      - key: MAX_REJEITADOS_IA
+        value: "60"
+      # Chave da Anthropic para /corrigir-automatico.
+      # sync: false = o valor NÃO fica neste arquivo; é definido no painel do
+      # Render (Environment). Sem ela, o endpoint responde 503 e o resto da API
+      # continua funcionando.
+      - key: ANTHROPIC_API_KEY
+        sync: false
