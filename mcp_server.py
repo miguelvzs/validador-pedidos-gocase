@@ -120,6 +120,9 @@ def _ler_cache() -> dict:
 
 def _formatar_resumo(resumo: dict) -> str:
     """Formata o dict de resumo como texto legível para o cliente MCP."""
+    prioridades = " | ".join(
+        f"{nome}: {qtd}" for nome, qtd in resumo["por_prioridade"].items()
+    )
     return (
         "=== Resumo da Execução — Validador GoCase ===\n"
         f"Total processados:    {resumo['total_processados']}\n"
@@ -127,8 +130,7 @@ def _formatar_resumo(resumo: dict) -> str:
         f"({resumo['percentual_validos']}%)\n"
         f"Rejeitados:           {resumo['total_rejeitados']}\n"
         "--- Prioridades ---\n"
-        f"URGENTE: {resumo['urgentes']} | ALTA: {resumo['alta']} | "
-        f"NORMAL: {resumo['normal']} | BAIXA: {resumo['baixa']}\n"
+        f"{prioridades}\n"
         "--- Valores ---\n"
         f"Válidos:    R$ {resumo['valor_total_validos']:,.2f}\n"
         f"Rejeitados: R$ {resumo['valor_total_rejeitados']:,.2f}\n"

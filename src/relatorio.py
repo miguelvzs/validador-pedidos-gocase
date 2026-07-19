@@ -7,13 +7,14 @@ cores por prioridade, bordas e larguras ajustadas — sem dashboards elaborados.
 import logging
 import os
 import time
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
+
+from src.config import config
 
 logger = logging.getLogger("relatorio")
 
@@ -57,13 +58,9 @@ def _caminho_temp(caminho: Path) -> Path:
     return caminho.with_name(caminho.stem + ".tmp" + caminho.suffix)
 
 # --- Paleta e estilos compartilhados ---
+# Cores por prioridade vêm da config (uma fonte de verdade: renomear ou
+# recolorir uma faixa no config.yaml reflete aqui automaticamente).
 COR_CABECALHO = "3B5BDB"
-CORES_PRIORIDADE = {
-    "URGENTE": "FFE0E0",
-    "ALTA": "FFF3E0",
-    "NORMAL": "E8F5E9",
-    "BAIXA": None,  # sem cor de fundo
-}
 COR_ZEBRA = "F5F5F5"
 
 FONTE_CABECALHO = Font(bold=True, size=11, color="FFFFFF")
@@ -121,13 +118,14 @@ def gerar_relatorio_validados(df: pd.DataFrame, caminho: Path) -> None:
         col_prioridade = (
             df.columns.get_loc("prioridade") if "prioridade" in df.columns else None
         )
+        cores = config.cores_prioridade
 
         for linha_excel in range(2, len(df) + 2):
             prioridade = None
             if col_prioridade is not None:
                 prioridade = ws.cell(row=linha_excel, column=col_prioridade + 1).value
 
-            cor = CORES_PRIORIDADE.get(str(prioridade))
+            cor = cores.get(str(prioridade))
             for col in range(1, len(df.columns) + 1):
                 celula = ws.cell(row=linha_excel, column=col)
                 celula.border = BORDA_FINA
@@ -175,60 +173,46 @@ def gerar_relatorio_rejeitados(df: pd.DataFrame, caminho: Path) -> None:
     logger.info("Relatório de rejeitados gerado: %s (%d linhas)", caminho, len(df))
 
 
-def gerar_resumo_execucao(df_validos: pd.DataFrame, df_rejeitados: pd.DataFrame,
-                          df_original: pd.DataFrame, tempo_execucao: float,
-                          caminho: Path) -> None:
-    """Gera Excel com resumo consolidado da execução."""
+def gerar_resumo_execucao(resumo: dict, caminho: Path) -> None:
+    """Gera Excel com o resumo consolidado, renderizando o dict já montado.
+
+    Não recalcula nada: recebe o resumo pronto do agente (fonte única das
+    métricas), evitando divergência entre o log e a planilha.
+    """
     os.makedirs(caminho.parent, exist_ok=True)
     temp = _caminho_temp(caminho)
-
-    total = len(df_original)
-    n_validos = len(df_validos)
-    n_rejeitados = len(df_rejeitados)
-    pct_validos = (n_validos / total * 100) if total else 0.0
-    pct_rejeitados = (n_rejeitados / total * 100) if total else 0.0
-
-    # Contagem por prioridade (0 quando a faixa não tem pedidos).
-    if "prioridade" in df_validos.columns and not df_validos.empty:
-        contagem_prio = df_validos["prioridade"].value_counts()
-    else:
-        contagem_prio = pd.Series(dtype="int64")
-
-    def _prio(faixa: str) -> int:
-        return int(contagem_prio.get(faixa, 0))
-
-    valor_validos = float(df_validos["valor_total"].sum()) if not df_validos.empty else 0.0
-    valor_rejeitados = (
-        float(df_rejeitados["valor_total"].sum(min_count=1) or 0.0)
-        if not df_rejeitados.empty else 0.0
-    )
 
     # Marcador de linha separadora: interpretado depois para fazer o merge.
     SEP = "__SEP__"
 
+    pct_v = resumo["percentual_validos"]
+    pct_r = resumo["percentual_rejeitados"]
+
     linhas: list[tuple[str, object]] = [
-        ("Data e hora da execução", datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
-        ("Total de pedidos processados", total),
-        ("Pedidos válidos", f"{n_validos} ({pct_validos:.1f}%)"),
-        ("Pedidos rejeitados", f"{n_rejeitados} ({pct_rejeitados:.1f}%)"),
-        (SEP, SEP),
-        ("Prioridade URGENTE", _prio("URGENTE")),
-        ("Prioridade ALTA", _prio("ALTA")),
-        ("Prioridade NORMAL", _prio("NORMAL")),
-        ("Prioridade BAIXA", _prio("BAIXA")),
-        (SEP, SEP),
-        ("Valor total dos pedidos válidos (R$)", f"{valor_validos:,.2f}"),
-        ("Valor total dos pedidos rejeitados (R$)", f"{valor_rejeitados:,.2f}"),
+        ("Data e hora da execução", resumo["data_hora"]),
+        ("Total de pedidos processados", resumo["total_processados"]),
+        ("Pedidos válidos", f"{resumo['total_validos']} ({pct_v:.1f}%)"),
+        ("Pedidos rejeitados", f"{resumo['total_rejeitados']} ({pct_r:.1f}%)"),
         (SEP, SEP),
     ]
 
-    # Pedidos por canal, uma linha por canal presente na base original.
-    if "canal" in df_original.columns:
-        for canal, qtd in df_original["canal"].value_counts().items():
-            linhas.append((f"Canal: {canal}", int(qtd)))
-        linhas.append((SEP, SEP))
+    # Uma linha por faixa de prioridade, na ordem definida na config.
+    for faixa, qtd in resumo["por_prioridade"].items():
+        linhas.append((f"Prioridade {faixa}", qtd))
+    linhas.append((SEP, SEP))
 
-    linhas.append(("Tempo de execução (segundos)", f"{tempo_execucao:.2f}"))
+    linhas += [
+        ("Valor total dos pedidos válidos (R$)", f"{resumo['valor_total_validos']:,.2f}"),
+        ("Valor total dos pedidos rejeitados (R$)", f"{resumo['valor_total_rejeitados']:,.2f}"),
+        (SEP, SEP),
+    ]
+
+    # Pedidos por canal.
+    for canal, qtd in resumo["por_canal"].items():
+        linhas.append((f"Canal: {canal}", qtd))
+    linhas.append((SEP, SEP))
+
+    linhas.append(("Tempo de execução (segundos)", f"{resumo['tempo_execucao_segundos']:.2f}"))
 
     with pd.ExcelWriter(temp, engine="openpyxl") as writer:
         # Cria a planilha com o cabeçalho; escrevemos as linhas manualmente

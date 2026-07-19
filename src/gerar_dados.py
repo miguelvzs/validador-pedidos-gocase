@@ -56,14 +56,6 @@ ENDERECOS = [
     "Av. Fernão Dias, 500 - Centro, Extrema/MG",
 ]
 
-# Colunas na ordem em que aparecem na planilha exportada.
-COLUNAS = [
-    "id_pedido", "data_pedido", "cliente", "email", "produto", "sku",
-    "quantidade", "valor_unitario", "valor_total", "canal", "endereco",
-    "prazo_entrega",
-]
-
-
 def _gerar_email(nome: str) -> str:
     """Deriva um email plausível a partir do nome do cliente.
 
@@ -147,7 +139,8 @@ def gerar_planilha_exemplo(caminho: Path = Path("data/pedidos_entrada.xlsx")) ->
     pedidos[40]["id_pedido"] = pedidos[0]["id_pedido"]
     pedidos[45]["id_pedido"] = pedidos[5]["id_pedido"]
 
-    df = pd.DataFrame(pedidos, columns=COLUNAS)
+    # Colunas inferidas da ordem de construção dos dicts (sem lista duplicada).
+    df = pd.DataFrame(pedidos)
     df.to_excel(caminho, index=False, engine="openpyxl")
 
     logger.info("Planilha de exemplo gerada: %s (%d pedidos)", caminho, len(df))

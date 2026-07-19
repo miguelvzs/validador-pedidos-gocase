@@ -33,10 +33,10 @@ _PADROES: dict[str, Any] = {
     },
     "prioridade": {
         "faixas": [
-            {"nome": "URGENTE", "min": 0, "max": 2},
-            {"nome": "ALTA", "min": 3, "max": 5},
-            {"nome": "NORMAL", "min": 6, "max": 10},
-            {"nome": "BAIXA", "min": 11, "max": None},
+            {"nome": "URGENTE", "min": 0, "max": 2, "cor": "FFE0E0"},
+            {"nome": "ALTA", "min": 3, "max": 5, "cor": "FFF3E0"},
+            {"nome": "NORMAL", "min": 6, "max": 10, "cor": "E8F5E9"},
+            {"nome": "BAIXA", "min": 11, "max": None, "cor": None},
         ],
     },
 }
@@ -75,6 +75,11 @@ class Config:
     def ordem_prioridade(self) -> list[str]:
         """Nomes das faixas na ordem definida (fila de produção)."""
         return [f["nome"] for f in self.faixas_prioridade]
+
+    @property
+    def cores_prioridade(self) -> dict[str, str | None]:
+        """Mapa nome da faixa → cor de fundo (hex sem '#'), ou None."""
+        return {f["nome"]: f.get("cor") for f in self.faixas_prioridade}
 
     def classificar_prioridade(self, dias_restantes: int) -> str:
         """Mapeia dias restantes para o nome da faixa, conforme o YAML.

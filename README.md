@@ -99,22 +99,23 @@ isoladamente.
 
 | Módulo | Responsabilidade |
 |---|---|
+| `src/config.py` | Carrega `config.yaml` (regras externas) com fallback embutido. |
 | `src/gerar_dados.py` | **Fixture de teste/demo.** Gera planilha simulada com erros propositais. *Não é componente de produção.* |
 | `src/leitor.py` | Lê o Excel, tipa colunas (datas, números), valida a presença das colunas esperadas. |
 | `src/validador.py` | Aplica as 9 regras de negócio; separa válidos de rejeitados; acumula motivos. |
 | `src/organizador.py` | Calcula `dias_restantes` e `prioridade`; ordena os válidos para produção. |
 | `src/relatorio.py` | Gera os 3 Excel formatados (cores por prioridade, bordas, freeze, larguras). |
-| `src/integracoes.py` | Abstrai entrada (`LeitorDados`) e saída (`Notificador`). Interface pronta para trocar arquivo por conector MCP no futuro. |
+| `src/assistente_ia.py` | Camada de IA: prepara rejeitados e aplica correções (via MCP). |
 | `src/agente.py` | Orquestra o fluxo completo, configura logging, monta o resumo. |
 | `main.py` | Entrada standalone (terminal / `.bat`). |
-| `mcp_server.py` | Entrada MCP Server (stdio, 3 tools). |
+| `mcp_server.py` | Entrada MCP Server (stdio, 5 tools + prompt). |
 
-### Por que a camada `integracoes.py`
+### Fonte única de verdade
 
-Hoje a entrada é um arquivo Excel e a saída é log. Mas a interface (`ler()`,
-`enviar_resumo()`, `enviar_alerta()`) foi desenhada para que **só a
-implementação mude** quando a fonte virar Google Sheets, ERP ou banco, e a
-notificação virar Slack ou email — via MCP. O resto do agente não muda.
+As métricas do resumo são montadas uma vez pelo `agente` e reusadas pelo
+relatório, log e cache MCP. Os nomes, a ordem e as cores das faixas de
+prioridade vivem só no `config.yaml` — renomear ou recolorir uma faixa reflete
+em todo o sistema, sem código hardcoded.
 
 ---
 
@@ -388,7 +389,6 @@ validador-pedidos-gocase/
 │   ├── validador.py         ← regras de validação
 │   ├── organizador.py       ← classificação por prioridade
 │   ├── relatorio.py         ← geração dos Excel formatados
-│   ├── integracoes.py       ← abstração de entrada/saída (pronta para MCP)
 │   ├── assistente_ia.py     ← camada de IA: correção assistida via MCP
 │   └── agente.py            ← orquestrador do fluxo
 ├── config.yaml              ← regras de negócio editáveis (sem tocar código)

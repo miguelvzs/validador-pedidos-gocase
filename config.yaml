@@ -42,16 +42,22 @@ validacao:
 prioridade:
   # Faixas por dias restantes até o prazo. [min, max] inclusivo.
   # max nulo = sem limite superior. A ordem aqui define a fila de produção.
+  # cor = fundo da linha no relatório (hex, sem '#'); vazio = sem cor.
+  # Renomear/reordenar/recolorir aqui reflete em todo o sistema.
   faixas:
     - nome: URGENTE
       min: 0
       max: 2
+      cor: FFE0E0
     - nome: ALTA
       min: 3
       max: 5
+      cor: FFF3E0
     - nome: NORMAL
       min: 6
       max: 10
+      cor: E8F5E9
     - nome: BAIXA
       min: 11
       max: null
+      cor: null

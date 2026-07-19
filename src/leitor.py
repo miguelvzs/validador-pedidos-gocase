@@ -9,10 +9,7 @@ from src.config import config
 
 logger = logging.getLogger("leitor")
 
-# Colunas que o restante do pipeline assume existirem, vindas da config externa.
-# Falta de qualquer uma é erro estrutural que deve parar a execução cedo.
-COLUNAS_ESPERADAS = config.colunas_obrigatorias
-
+# Colunas de data/numéricas são estruturais do domínio (não configuráveis).
 COLUNAS_DATA = ["data_pedido", "prazo_entrega"]
 COLUNAS_NUMERICAS = ["quantidade", "valor_unitario", "valor_total"]
 
@@ -40,7 +37,8 @@ def ler_planilha(caminho: Path) -> pd.DataFrame:
         df = df.rename(columns=mapa)
         logger.info("Mapa de colunas aplicado: %s", mapa)
 
-    faltantes = [c for c in COLUNAS_ESPERADAS if c not in df.columns]
+    # Colunas obrigatórias lidas da config a cada execução (reconfigurável).
+    faltantes = [c for c in config.colunas_obrigatorias if c not in df.columns]
     if faltantes:
         raise ValueError(
             "Colunas obrigatórias ausentes na planilha: "

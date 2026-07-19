@@ -9,10 +9,6 @@ from src.config import config
 
 logger = logging.getLogger("organizador")
 
-# Ordem de urgência vem da config (config.yaml). pd.Categorical com esta ordem
-# garante que a fila respeite as faixas definidas pelo gestor.
-ORDEM_PRIORIDADE = config.ordem_prioridade
-
 
 def _classificar(dias_restantes: int) -> str:
     """Mapeia dias restantes até o prazo para uma faixa de prioridade.
@@ -33,22 +29,25 @@ def organizar_pedidos(df_validos: pd.DataFrame) -> pd.DataFrame:
         logger.info("Nenhum pedido válido para organizar.")
         return df
 
+    # Ordem lida da config a cada execução (reconfigurável sem reiniciar).
+    ordem = config.ordem_prioridade
+
     hoje = date.today()
     df["dias_restantes"] = df["prazo_entrega"].apply(lambda d: (d.date() - hoje).days)
     df["prioridade"] = df["dias_restantes"].apply(_classificar)
 
     # Categoria ordenada: permite ordenar por urgência sem mapa numérico à parte.
     df["prioridade"] = pd.Categorical(
-        df["prioridade"], categories=ORDEM_PRIORIDADE, ordered=True
+        df["prioridade"], categories=ordem, ordered=True
     )
 
-    # URGENTE primeiro; dentro da mesma faixa, prazo mais apertado antes.
+    # Primeira faixa primeiro; dentro da mesma faixa, prazo mais apertado antes.
     df = df.sort_values(
         by=["prioridade", "dias_restantes"], ascending=[True, True]
     ).reset_index(drop=True)
 
     contagem = df["prioridade"].value_counts()
-    for faixa in ORDEM_PRIORIDADE:
+    for faixa in ordem:
         logger.info("Prioridade %s: %d pedido(s)", faixa, int(contagem.get(faixa, 0)))
 
     return df

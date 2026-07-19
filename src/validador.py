@@ -14,21 +14,15 @@ from src.config import config
 
 logger = logging.getLogger("validador")
 
-# Regex e tolerância vêm da config externa (config.yaml), com fallback embutido.
-# Regex compilada uma vez: exige texto antes do @, texto após e ponto no domínio.
-PADRAO_EMAIL = re.compile(config.regex_email)
 
-# Tolerância monetária: soma de floats acumula erro de arredondamento, então
-# uma diferença pequena entre valor_total e quantidade*unitário é aceita em vez
-# de gerar falso positivo. Valor configurável em config.yaml.
-TOLERANCIA_VALOR = config.tolerancia_valor
-
-
-def _validar_linha(pedido: pd.Series, ids_vistos: set[str], hoje: date) -> list[str]:
+def _validar_linha(pedido: pd.Series, ids_vistos: set[str], hoje: date,
+                   padrao_email: re.Pattern, tolerancia: float) -> list[str]:
     """Aplica todas as regras a um pedido e devolve a lista de motivos de erro.
 
     `ids_vistos` acumula os ids já processados para detectar duplicatas; a
-    primeira ocorrência é aceita e a segunda é a rejeitada.
+    primeira ocorrência é aceita e a segunda é a rejeitada. `padrao_email` e
+    `tolerancia` vêm da config, lidos a cada execução (permite reconfigurar
+    sem reiniciar o processo).
     """
     motivos: list[str] = []
 
@@ -46,7 +40,7 @@ def _validar_linha(pedido: pd.Series, ids_vistos: set[str], hoje: date) -> list[
 
     # 3. email: formato mínimo válido.
     email = pedido.get("email")
-    if pd.isna(email) or not PADRAO_EMAIL.match(str(email).strip()):
+    if pd.isna(email) or not padrao_email.match(str(email).strip()):
         motivos.append("Email inválido: formato incorreto")
 
     # 4. quantidade: inteiro positivo.
@@ -66,7 +60,7 @@ def _validar_linha(pedido: pd.Series, ids_vistos: set[str], hoje: date) -> list[
         motivos.append("Valor total ausente")
     elif not (pd.isna(quantidade) or pd.isna(valor_unitario)):
         esperado = quantidade * valor_unitario
-        if abs(valor_total - esperado) > TOLERANCIA_VALOR:
+        if abs(valor_total - esperado) > tolerancia:
             motivos.append(
                 f"Valor total incoerente: esperado {esperado:.2f}, "
                 f"encontrado {valor_total:.2f}"
@@ -99,6 +93,11 @@ def validar_pedidos(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     'motivo_rejeicao' com todos os erros encontrados por pedido.
     """
     hoje = date.today()
+    # Lê a config a cada execução: reconfigurar o config.yaml surte efeito na
+    # próxima chamada, sem reiniciar o processo. Regex compilada uma vez aqui.
+    padrao_email = re.compile(config.regex_email)
+    tolerancia = config.tolerancia_valor
+
     ids_vistos: set[str] = set()
     indices_validos: list[int] = []
     indices_rejeitados: list[int] = []
@@ -107,7 +106,7 @@ def validar_pedidos(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     # Itera na ordem original: essencial para a regra de duplicata, que precisa
     # saber qual ocorrência veio primeiro.
     for indice, pedido in df.iterrows():
-        motivos = _validar_linha(pedido, ids_vistos, hoje)
+        motivos = _validar_linha(pedido, ids_vistos, hoje, padrao_email, tolerancia)
 
         # Registra o id só depois de checar duplicata, e apenas se preenchido.
         id_pedido = pedido.get("id_pedido")
