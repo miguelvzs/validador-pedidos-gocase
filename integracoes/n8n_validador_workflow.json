@@ -85,6 +85,19 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [760, 420]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=relatorios_gocase_{{ $('POST /validar').item.json.job_id }}.zip",
+        "dataPropertyName": "relatorios",
+        "options": {}
+      },
+      "id": "c5a5a555-5555-4555-8555-555555555555",
+      "name": "Salvar em disco",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [980, 420]
     }
   ],
   "connections": {
@@ -96,6 +109,9 @@
         {"node": "Tem rejeitados?", "type": "main", "index": 0},
         {"node": "Baixar relatórios (.zip)", "type": "main", "index": 0}
       ]]
+    },
+    "Baixar relatórios (.zip)": {
+      "main": [[{"node": "Salvar em disco", "type": "main", "index": 0}]]
     }
   },
   "settings": {"executionOrder": "v1"},
