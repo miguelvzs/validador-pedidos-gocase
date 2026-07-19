@@ -97,22 +97,31 @@ Esse nó exige a credencial do canal (SMTP/OAuth) configurada no n8n — por iss
 não vem no workflow (senão quebraria a importação). Configure a credencial e
 conecte o nó.
 
-## Add-on opcional: correção por IA (precisa de credencial de LLM)
+## Workflow pronto: correção por IA (Anthropic/Claude)
 
-Traz a correção assistida (hoje no MCP) para o n8n, usando os endpoints
-`/analisar-rejeitados` e `/revalidar`:
+Importe `n8n_correcao_ia_workflow.json`. Fluxo:
+**Upload → POST /validar → IF rejeitados → /analisar-rejeitados → IA (Claude) →
+Extrair correções → /revalidar → Resultado** (mostra quantos foram recuperados).
 
-1. No ramo **true** do IF → **HTTP Request** `POST /analisar-rejeitados`, body
-   `{ "job_id": "{{ $('POST /validar').item.json.job_id }}" }`. Retorna o
-   `contexto`.
-2. **Nó de IA** (OpenAI/Anthropic) — prompt: "Corrija os pedidos rejeitados.
-   Devolva SÓ um array JSON `[{id_pedido, campo, valor}]`. Não invente dados
-   que não dá para deduzir." Passe o `contexto` como entrada.
-3. **HTTP Request** `POST /revalidar`, body
-   `{ "job_id": "...", "correcoes": <array da IA> }`. Retorna `recuperados`.
+Só falta **plugar sua chave da Anthropic**:
 
-O nó de IA exige a chave da OpenAI/Anthropic no n8n. Sem ela, o ciclo de
-correção não roda — mas a validação e o download seguem funcionando.
+1. No n8n: **Credentials** → **New** → **Header Auth**.
+   - **Name:** `x-api-key`
+   - **Value:** sua chave `sk-ant-...`
+2. Abra o nó **IA corrige (Claude)** → em **Authentication** selecione essa
+   credencial Header Auth.
+3. Execute o workflow → suba a planilha no formulário.
+
+O nó já manda `anthropic-version: 2023-06-01` e usa o modelo
+`claude-haiku-4-5-20251001` (rápido e barato). Troque o modelo no `jsonBody` se
+quiser mais capacidade (ex.: `claude-sonnet-5`).
+
+O nó **Extrair correções** (Code) tolera resposta com cercas ```json``` ou
+preâmbulo — pega o primeiro bloco `{...}` e parseia; se falhar, correções vazias
+(não quebra o fluxo).
+
+Sem a chave, só este workflow não roda — o `n8n_validador_workflow.json`
+(validação + download) continua funcionando normal.
 
 ## Power Automate
 

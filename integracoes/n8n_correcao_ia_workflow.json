@@ -1,0 +1,184 @@
+{
+  "name": "Validador GoCase - Correção por IA (Anthropic)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Validador + Correção por IA",
+        "formDescription": "Suba a planilha. A IA tenta recuperar os pedidos rejeitados.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "arquivo",
+              "fieldType": "file",
+              "acceptFileTypes": ".xlsx",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d1a1a111-1111-4111-8111-111111111111",
+      "name": "Upload da planilha",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.1,
+      "position": [220, 300],
+      "webhookId": "validador-gocase-ia-form"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://validador-pedidos-gocase.onrender.com/validar",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "arquivo",
+              "inputDataFieldName": "arquivo"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d2a2a222-2222-4222-8222-222222222222",
+      "name": "POST /validar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {
+              "leftValue": "={{ $json.resumo.total_rejeitados }}",
+              "rightValue": 0,
+              "operator": {"type": "number", "operation": "gt"}
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d3a3a333-3333-4333-8333-333333333333",
+      "name": "Tem rejeitados?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://validador-pedidos-gocase.onrender.com/analisar-rejeitados",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ job_id: $json.job_id }) }}",
+        "options": {}
+      },
+      "id": "d4a4a444-4444-4444-8444-444444444444",
+      "name": "Analisar rejeitados",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "anthropic-version", "value": "2023-06-01"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1024, system: 'Você corrige pedidos rejeitados de uma fábrica. Responda SOMENTE um objeto JSON com a chave correcoes: uma lista de objetos, cada um com os campos id_pedido, campo e valor. Aplique as sugestões mecânicas e infira erros claros como nome e email. Não invente dado que não dá para deduzir; se um campo está totalmente vazio e não há como saber, não crie correção para ele.', messages: [ { role: 'user', content: $json.contexto } ] }) }}",
+        "options": {}
+      },
+      "id": "d5a5a555-5555-4555-8555-555555555555",
+      "name": "IA corrige (Claude)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrai o array de correções da resposta do Claude.\n// Claude devolve texto; pegamos o primeiro bloco {...} e parseamos.\nlet raw = $json.content[0].text.trim();\nconst m = raw.match(/\\{[\\s\\S]*\\}/);\nif (m) raw = m[0];\nlet correcoes = [];\ntry {\n  correcoes = JSON.parse(raw).correcoes || [];\n} catch (e) {\n  correcoes = [];\n}\nreturn [{ json: { correcoes, job_id: $('POST /validar').item.json.job_id } }];"
+      },
+      "id": "d6a6a666-6666-4666-8666-666666666666",
+      "name": "Extrair correções",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://validador-pedidos-gocase.onrender.com/revalidar",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ job_id: $json.job_id, correcoes: $json.correcoes }) }}",
+        "options": {}
+      },
+      "id": "d7a7a777-7777-4777-8777-777777777777",
+      "name": "Revalidar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 220]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d8a8a888-8888-4888-8888-888888888888",
+              "name": "mensagem",
+              "type": "string",
+              "value": "=Correção por IA: recuperados {{ $json.recuperados }} de {{ $json.rejeitados_antes }} rejeitados. Agora {{ $json.rejeitados_depois }} rejeitados restantes. Novo job: {{ $json.job_id }}."
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "d9a9a999-9999-4999-8999-999999999999",
+      "name": "Resultado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1760, 220]
+    }
+  ],
+  "connections": {
+    "Upload da planilha": {
+      "main": [[{"node": "POST /validar", "type": "main", "index": 0}]]
+    },
+    "POST /validar": {
+      "main": [[{"node": "Tem rejeitados?", "type": "main", "index": 0}]]
+    },
+    "Tem rejeitados?": {
+      "main": [
+        [{"node": "Analisar rejeitados", "type": "main", "index": 0}],
+        []
+      ]
+    },
+    "Analisar rejeitados": {
+      "main": [[{"node": "IA corrige (Claude)", "type": "main", "index": 0}]]
+    },
+    "IA corrige (Claude)": {
+      "main": [[{"node": "Extrair correções", "type": "main", "index": 0}]]
+    },
+    "Extrair correções": {
+      "main": [[{"node": "Revalidar", "type": "main", "index": 0}]]
+    },
+    "Revalidar": {
+      "main": [[{"node": "Resultado", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {"executionOrder": "v1"},
+  "pinData": {}
+}
