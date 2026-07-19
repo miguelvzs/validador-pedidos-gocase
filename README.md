@@ -16,8 +16,9 @@ lugar só e ninguém instala nada na própria máquina:
   HTTP. Inclui os endpoints de correção por IA (`/analisar-rejeitados`,
   `/revalidar`), antes só disponíveis via MCP.
 - **Frontend web (Streamlit)** — o operador sobe a planilha no navegador.
-- **Low-code (n8n)** — um fluxo chama a API ao chegar um arquivo. É o caminho
-  principal na GoCase (ver `integracoes/`).
+- **Low-code (n8n e afins)** — um fluxo chama a API ao chegar um arquivo. O n8n
+  é o caminho principal na GoCase e tem workflow pronto (ver `integracoes/`);
+  como a API é HTTP puro, Make, Power Automate ou Zapier consomem igual.
 - **MCP Server** — chamável por qualquer ferramenta de IA (Claude Desktop, etc.),
   incluindo a correção assistida de rejeitados.
 

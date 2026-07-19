@@ -1,7 +1,13 @@
 # Integrações low-code — Validador de Pedidos GoCase
 
-A API HTTP (`api.py`) é o ponto único de integração. Qualquer ferramenta que
-fale HTTP consome o validador sem instalar nada. O caminho usado aqui é o n8n.
+A API HTTP (`api.py`) é o ponto único de integração: **HTTP + JSON padrão**, sem
+SDK e sem amarração a ferramenta. Qualquer plataforma que faça uma requisição
+HTTP consome o validador sem instalar nada — n8n, Make, Power Automate, Zapier,
+Apps Script, código próprio.
+
+Aqui o caminho documentado e testado é o **n8n** (workflow pronto para importar,
+abaixo). Para as demais, use o contrato da API a seguir: o formato do arquivo de
+workflow é específico do n8n, mas as chamadas são as mesmas em qualquer lugar.
 
 ## Contrato da API
 
