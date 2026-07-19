@@ -196,6 +196,11 @@ def gerar_resumo_execucao(resumo: dict, caminho: Path) -> None:
         (SEP, SEP),
     ]
 
+    # Destaca a atuação da IA quando o lote passou pela correção assistida.
+    if resumo.get("corrigidos_por_ia"):
+        linhas.append(("Pedidos recuperados pela IA", resumo["corrigidos_por_ia"]))
+        linhas.append((SEP, SEP))
+
     # Uma linha por faixa de prioridade, na ordem definida na config.
     for faixa, qtd in resumo["por_prioridade"].items():
         linhas.append((f"Prioridade {faixa}", qtd))

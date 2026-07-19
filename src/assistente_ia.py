@@ -126,15 +126,21 @@ def montar_contexto_correcao(caminho_rejeitados: Path) -> str:
     return "\n".join(linhas)
 
 
-def aplicar_correcoes(correcoes: list[dict], caminho_entrada: Path) -> pd.DataFrame:
-    """Aplica as correções sobre a planilha original e devolve o DataFrame.
+def aplicar_correcoes(correcoes: list[dict],
+                      caminho_entrada: Path) -> tuple[pd.DataFrame, list[dict]]:
+    """Aplica as correções sobre a planilha original.
 
     Cada correção: {id_pedido, campo, valor}. Casa pela PRIMEIRA linha com o
     id_pedido informado (a original; a duplicata é tratada corrigindo o id).
     Não escreve em disco — quem chama decide revalidar/persistir.
+
+    Retorna (df_corrigido, log), onde `log` registra o que de fato mudou
+    ({id_pedido, campo, valor_anterior, valor_novo}) — base da trilha de
+    auditoria da IA nos relatórios.
     """
     df = pd.read_excel(caminho_entrada, engine="openpyxl")
 
+    log: list[dict] = []
     aplicadas = 0
     for correcao in correcoes:
         # A correção vem de uma IA: nunca confie no formato. Qualquer item fora
@@ -173,8 +179,40 @@ def aplicar_correcoes(correcoes: list[dict], caminho_entrada: Path) -> pd.DataFr
         if df[campo].dtype != object:
             df[campo] = df[campo].astype(object)
 
+        anterior = df.at[idx, campo]
         df.at[idx, campo] = valor
+        log.append({
+            "id_pedido": id_pedido,
+            "campo": campo,
+            "valor_anterior": "" if pd.isna(anterior) else anterior,
+            "valor_novo": valor,
+        })
         aplicadas += 1
 
     logger.info("Correções aplicadas: %d de %d", aplicadas, len(correcoes))
+    return df, log
+
+
+def marcar_correcoes(df: pd.DataFrame, log: list[dict]) -> pd.DataFrame:
+    """Marca no DataFrame quais pedidos a IA corrigiu e o que mudou.
+
+    Cria as colunas `corrigido_por_ia` e `correcao_ia`, que atravessam o
+    pipeline e aparecem nas planilhas finais — é a trilha visível do trabalho
+    da IA no produto entregue.
+    """
+    if "corrigido_por_ia" not in df.columns:
+        df["corrigido_por_ia"] = ""
+        df["correcao_ia"] = ""
+
+    for entrada in log:
+        mascara = df["id_pedido"] == entrada["id_pedido"]
+        if not mascara.any():
+            continue
+        idx = df.index[mascara][0]
+        descricao = (f"{entrada['campo']}: '{entrada['valor_anterior']}' → "
+                     f"'{entrada['valor_novo']}'")
+        atual = df.at[idx, "correcao_ia"]
+        df.at[idx, "corrigido_por_ia"] = "Sim"
+        df.at[idx, "correcao_ia"] = f"{atual}; {descricao}" if atual else descricao
+
     return df

@@ -28,7 +28,11 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.agente import montar_resumo
-from src.assistente_ia import aplicar_correcoes, montar_contexto_correcao
+from src.assistente_ia import (
+    aplicar_correcoes,
+    marcar_correcoes,
+    montar_contexto_correcao,
+)
 from src.leitor import ler_planilha
 from src.organizador import organizar_pedidos
 from src.relatorio import (
@@ -227,7 +231,10 @@ def revalidar(req: Revalidacao) -> dict:
     # Aplica as correções sobre a planilha original e reprocessa como novo job.
     # Correções vêm de uma IA: falha na aplicação vira erro legível, não 500.
     try:
-        df = aplicar_correcoes(req.correcoes, entrada)
+        df, log = aplicar_correcoes(req.correcoes, entrada)
+        # Marca a autoria da IA nas linhas corrigidas: as colunas seguem pelo
+        # pipeline e aparecem nas planilhas finais (trilha de auditoria).
+        df = marcar_correcoes(df, log)
         buffer = io.BytesIO()
         df.to_excel(buffer, index=False, engine="openpyxl")
     except HTTPException:

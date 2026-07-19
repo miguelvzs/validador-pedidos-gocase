@@ -61,6 +61,13 @@ def montar_resumo(df_validos: pd.DataFrame, df_rejeitados: pd.DataFrame,
     else:
         por_canal = {}
 
+    # Quantos dos válidos foram recuperados pela IA (coluna só existe quando o
+    # lote passou pelo ciclo de correção assistida).
+    if "corrigido_por_ia" in df_validos.columns and not df_validos.empty:
+        corrigidos_por_ia = int((df_validos["corrigido_por_ia"] == "Sim").sum())
+    else:
+        corrigidos_por_ia = 0
+
     valor_validos = float(df_validos["valor_total"].sum()) if not df_validos.empty else 0.0
     valor_rejeitados = (
         float(df_rejeitados["valor_total"].sum(min_count=1) or 0.0)
@@ -76,6 +83,7 @@ def montar_resumo(df_validos: pd.DataFrame, df_rejeitados: pd.DataFrame,
         "percentual_rejeitados": round((n_rejeitados / total * 100) if total else 0.0, 1),
         "por_prioridade": por_prioridade,
         "por_canal": por_canal,
+        "corrigidos_por_ia": corrigidos_por_ia,
         "valor_total_validos": round(valor_validos, 2),
         "valor_total_rejeitados": round(valor_rejeitados, 2),
         "tempo_execucao_segundos": round(tempo_execucao, 2),

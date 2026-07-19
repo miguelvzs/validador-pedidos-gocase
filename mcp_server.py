@@ -12,7 +12,11 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from src.agente import CAMINHO_CACHE_RESUMO, CAMINHO_REJEITADOS, AgenteValidador
-from src.assistente_ia import aplicar_correcoes, montar_contexto_correcao
+from src.assistente_ia import (
+    aplicar_correcoes,
+    marcar_correcoes,
+    montar_contexto_correcao,
+)
 from src.gerar_dados import gerar_planilha_exemplo
 
 ENTRADA_PADRAO = "data/pedidos_entrada.xlsx"
@@ -72,7 +76,9 @@ def revalidar_com_correcoes(correcoes: list[dict], caminho_entrada: str = ENTRAD
     # Guarda o número de rejeitados de antes para mostrar o ganho da correção.
     rejeitados_antes = _ler_cache().get("total_rejeitados")
 
-    df_corrigido = aplicar_correcoes(correcoes, caminho)
+    df_corrigido, log = aplicar_correcoes(correcoes, caminho)
+    # Marca a autoria da IA nas linhas corrigidas (trilha nos relatórios).
+    df_corrigido = marcar_correcoes(df_corrigido, log)
     # Backup antes de sobrescrever: a origem é dado real: guarda uma cópia .bak
     # para que uma correção equivocada da IA seja reversível.
     if caminho.exists():
