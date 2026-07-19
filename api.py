@@ -23,6 +23,8 @@ import uuid
 import zipfile
 from pathlib import Path
 
+import httpx
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -57,6 +59,65 @@ JOBS_DIR.mkdir(parents=True, exist_ok=True)
 # Tempo de vida de um job em segundos. Passado esse prazo, a pasta é apagada
 # na próxima requisição (limpeza preguiçosa). Configurável por ambiente.
 TTL_JOBS_SEG = int(os.environ.get("JOBS_TTL_SEGUNDOS", "3600"))  # 1 hora
+
+# --- Correção automática por IA (opcional) ---
+# A chave fica só no ambiente do servidor, nunca no repositório. Sem ela, o
+# endpoint /corrigir-automatico responde 503 e o resto da API segue normal.
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+MODELO_IA = os.environ.get("MODELO_IA", "claude-haiku-4-5-20251001")
+# Teto de rejeitados por chamada: limita o tamanho (e o custo) de cada pedido
+# à IA, já que a API é pública.
+MAX_REJEITADOS_IA = int(os.environ.get("MAX_REJEITADOS_IA", "60"))
+
+INSTRUCAO_IA = (
+    "Você corrige pedidos rejeitados de uma fábrica. Responda SOMENTE um objeto "
+    "JSON com a chave correcoes: uma lista de objetos, cada um com os campos "
+    "id_pedido, campo e valor. Aplique as sugestões mecânicas e infira erros "
+    "claros como nome e e-mail. Não invente dado que não dá para deduzir; se um "
+    "campo está totalmente vazio e não há como saber, não crie correção para ele."
+)
+
+
+def _pedir_correcoes_ia(contexto: str) -> list[dict]:
+    """Pede as correções ao Claude e devolve a lista já parseada.
+
+    Erros de rede/API viram mensagem legível. A resposta do modelo é texto:
+    extraímos o primeiro bloco JSON e ignoramos o que não casar com o formato.
+    """
+    try:
+        resposta = httpx.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": MODELO_IA,
+                "max_tokens": 1024,
+                "system": INSTRUCAO_IA,
+                "messages": [{"role": "user", "content": contexto}],
+            },
+            timeout=90,
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao consultar a IA: {exc}")
+
+    if resposta.status_code != 200:
+        # Repassa o motivo (ex.: crédito insuficiente) em vez de um 500 opaco.
+        raise HTTPException(
+            status_code=502,
+            detail=f"IA retornou {resposta.status_code}: {resposta.text[:200]}",
+        )
+
+    texto = resposta.json()["content"][0]["text"].strip()
+    inicio, fim = texto.find("{"), texto.rfind("}")
+    if inicio == -1 or fim == -1:
+        return []
+    try:
+        return json.loads(texto[inicio:fim + 1]).get("correcoes", []) or []
+    except json.JSONDecodeError:
+        return []
 
 NOMES_RELATORIOS = {
     "validados": "pedidos_validados.xlsx",
@@ -207,6 +268,36 @@ def analisar_rejeitados(ref: JobRef) -> dict:
     }
 
 
+def _aplicar_e_reprocessar(job_dir: Path, correcoes: list[dict]) -> dict:
+    """Aplica correções à planilha do job, marca a autoria da IA e revalida.
+
+    Compartilhado por /revalidar (correções vindas de fora) e
+    /corrigir-automatico (correções geradas pelo servidor).
+    """
+    entrada = job_dir / "entrada.xlsx"
+    antes = _resumo_do_job(job_dir).get("total_rejeitados")
+
+    # Correções vêm de uma IA: falha na aplicação vira erro legível, não 500.
+    try:
+        df, log = aplicar_correcoes(correcoes, entrada)
+        df = marcar_correcoes(df, log)
+        buffer = io.BytesIO()
+        df.to_excel(buffer, index=False, engine="openpyxl")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Não foi possível aplicar as correções: {exc}",
+        )
+
+    resultado = _processar(buffer.getvalue())
+    depois = resultado["resumo"]["total_rejeitados"]
+    resultado["rejeitados_antes"] = antes
+    resultado["rejeitados_depois"] = depois
+    if antes is not None:
+        resultado["recuperados"] = antes - depois
+    return resultado
+
+
 class Revalidacao(BaseModel):
     """Correções propostas pela IA para reprocessar um job."""
     job_id: str
@@ -222,36 +313,45 @@ def revalidar(req: Revalidacao) -> dict:
     aprovação em qualquer cliente HTTP.
     """
     job_dir = JOBS_DIR / req.job_id
-    entrada = job_dir / "entrada.xlsx"
-    if not entrada.exists():
+    if not (job_dir / "entrada.xlsx").exists():
         raise HTTPException(status_code=404, detail="job_id não encontrado ou expirado.")
+    return _aplicar_e_reprocessar(job_dir, req.correcoes)
 
-    antes = _resumo_do_job(job_dir).get("total_rejeitados")
 
-    # Aplica as correções sobre a planilha original e reprocessa como novo job.
-    # Correções vêm de uma IA: falha na aplicação vira erro legível, não 500.
-    try:
-        df, log = aplicar_correcoes(req.correcoes, entrada)
-        # Marca a autoria da IA nas linhas corrigidas: as colunas seguem pelo
-        # pipeline e aparecem nas planilhas finais (trilha de auditoria).
-        df = marcar_correcoes(df, log)
-        buffer = io.BytesIO()
-        df.to_excel(buffer, index=False, engine="openpyxl")
-    except HTTPException:
-        raise
-    except Exception as exc:
+@app.post("/corrigir-automatico")
+def corrigir_automatico(ref: JobRef) -> dict:
+    """Ciclo completo de correção por IA, sem o cliente precisar de chave.
+
+    O servidor lê os rejeitados, pede as correções ao Claude com a chave
+    configurada em ANTHROPIC_API_KEY e revalida o lote. Quem chama (n8n,
+    Power Automate, navegador) não precisa de credencial nenhuma.
+    """
+    if not ANTHROPIC_API_KEY:
         raise HTTPException(
-            status_code=422,
-            detail=f"Não foi possível aplicar as correções: {exc}",
+            status_code=503,
+            detail="Correção automática indisponível: ANTHROPIC_API_KEY não "
+                   "configurada no servidor. Use /revalidar enviando as correções.",
         )
 
-    resultado = _processar(buffer.getvalue())
+    job_dir = JOBS_DIR / ref.job_id
+    rejeitados = job_dir / NOMES_RELATORIOS["rejeitados"]
+    if not rejeitados.exists():
+        raise HTTPException(status_code=404, detail="job_id não encontrado ou expirado.")
 
-    depois = resultado["resumo"]["total_rejeitados"]
-    resultado["rejeitados_antes"] = antes
-    resultado["rejeitados_depois"] = depois
-    if antes is not None:
-        resultado["recuperados"] = antes - depois
+    # Guarda-chuva de custo: lote gigante não vira uma chamada gigante à IA.
+    total_rejeitados = _resumo_do_job(job_dir).get("total_rejeitados") or 0
+    if total_rejeitados > MAX_REJEITADOS_IA:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Lote com {total_rejeitados} rejeitados excede o limite de "
+                   f"{MAX_REJEITADOS_IA} para correção automática.",
+        )
+    if total_rejeitados == 0:
+        raise HTTPException(status_code=400, detail="Este lote não tem rejeitados.")
+
+    correcoes = _pedir_correcoes_ia(montar_contexto_correcao(rejeitados))
+    resultado = _aplicar_e_reprocessar(job_dir, correcoes)
+    resultado["correcoes_sugeridas"] = len(correcoes)
     return resultado
 
 

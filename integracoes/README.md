@@ -15,6 +15,7 @@ Base: `http://SEU_SERVIDOR:8000`
 | `GET` | `/download/{job_id}/{tipo}` | tipo = validados\|rejeitados\|resumo | 1 relatório .xlsx |
 | `POST` | `/analisar-rejeitados` | JSON `{ job_id }` | contexto (dados+motivos+sugestões) para a IA corrigir |
 | `POST` | `/revalidar` | JSON `{ job_id, correcoes:[{id_pedido,campo,valor}] }` | novo resumo + `recuperados` (antes→depois) |
+| `POST` | `/corrigir-automatico` | JSON `{ job_id }` | ciclo completo de IA no servidor (sem credencial no cliente) |
 
 Erros: `400` (não é Excel), `422` (planilha com colunas erradas — mensagem
 legível), `404` (job_id inexistente ou expirado).
@@ -97,37 +98,27 @@ Esse nó exige a credencial do canal (SMTP/OAuth) configurada no n8n — por iss
 não vem no workflow (senão quebraria a importação). Configure a credencial e
 conecte o nó.
 
-## Workflow pronto: correção por IA (Anthropic/Claude)
+## Workflow pronto: correção por IA (sem credencial no cliente)
 
-Importe `n8n_correcao_ia_workflow.json`. Fluxo:
-**Upload → POST /validar → IF rejeitados → /analisar-rejeitados → IA (Claude) →
-Extrair correções → /revalidar → Resultado → Baixar relatórios (.zip) → Baixar
-no navegador.**
+Importe `n8n_correcao_ia_workflow.json`. **Não precisa de chave nenhuma no
+n8n**: quem fala com o Claude é o servidor, pelo endpoint
+`POST /corrigir-automatico` (a chave vive numa variável de ambiente do host,
+ver `DEPLOY.md`). Assim qualquer pessoa roda a versão com IA.
+
+Se o servidor estiver sem a chave configurada, esse endpoint responde **503** e
+o workflow base (`n8n_validador_workflow.json`) continua funcionando.
+
+Fluxo:
+**Upload → POST /validar → IF rejeitados → /corrigir-automatico (IA no servidor)
+→ Resultado → Baixar relatórios (.zip) → Baixar no navegador.**
 
 O download entrega as planilhas **pós-correção**: `pedidos_validados.xlsx` já
-com os pedidos recuperados e `pedidos_rejeitados.xlsx` só com o que a IA não
-conseguiu corrigir (ex.: 40→42 válidos e 10→8 rejeitados). Se o lote não tiver
-rejeitados, o ramo `false` do IF vai direto para o mesmo download.
+com os pedidos recuperados (marcados nas colunas `corrigido_por_ia` e
+`correcao_ia`) e `pedidos_rejeitados.xlsx` só com o que a IA não conseguiu
+corrigir (ex.: 40→42 válidos e 10→8 rejeitados). Se o lote não tiver rejeitados,
+o ramo `false` do IF vai direto para o mesmo download.
 
-Só falta **plugar sua chave da Anthropic**:
-
-1. No n8n: **Credentials** → **New** → **Header Auth**.
-   - **Name:** `x-api-key`
-   - **Value:** sua chave `sk-ant-...`
-2. Abra o nó **IA corrige (Claude)** → em **Authentication** selecione essa
-   credencial Header Auth.
-3. Execute o workflow → suba a planilha no formulário.
-
-O nó já manda `anthropic-version: 2023-06-01` e usa o modelo
-`claude-haiku-4-5-20251001` (rápido e barato). Troque o modelo no `jsonBody` se
-quiser mais capacidade (ex.: `claude-sonnet-5`).
-
-O nó **Extrair correções** (Code) tolera resposta com cercas ```json``` ou
-preâmbulo — pega o primeiro bloco `{...}` e parseia; se falhar, correções vazias
-(não quebra o fluxo).
-
-Sem a chave, só este workflow não roda — o `n8n_validador_workflow.json`
-(validação + download) continua funcionando normal.
+Passos: importe → **Execute workflow** → abra a URL do formulário → suba o `.xlsx`.
 
 ## Power Automate
 

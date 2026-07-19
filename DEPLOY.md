@@ -28,6 +28,30 @@ Essa URL **já está fixada** no workflow do n8n (`integracoes/n8n_validador_wor
 Se o Render gerar um nome diferente (nome já em uso), troque a URL no nó
 **POST /validar** do workflow — ou me avise que eu corrijo.
 
+## Ativar a correção automática por IA (opcional)
+
+Para que **qualquer pessoa** use a correção por IA sem ter chave própria, a
+chave fica no servidor:
+
+1. No Render: serviço → **Environment** → **Add Environment Variable**.
+2. `ANTHROPIC_API_KEY` = sua chave `sk-ant-...` → **Save** (o serviço reinicia).
+
+Nunca coloque a chave no repositório — só nessa variável de ambiente.
+
+Controles de custo já embutidos:
+
+| Variável | Padrão | Para que serve |
+|---|---|---|
+| `MAX_REJEITADOS_IA` | `60` | Recusa lotes maiores, limitando o tamanho da chamada |
+| `MODELO_IA` | `claude-haiku-4-5-20251001` | Modelo barato; troque se quiser mais capacidade |
+
+> **Atenção ao custo:** a API é pública e sem autenticação. Com a chave no
+> servidor, qualquer um que descubra a URL pode consumir seu crédito da
+> Anthropic. Mantenha um saldo baixo (o saldo é o teto do prejuízo) e
+> **remova a variável `ANTHROPIC_API_KEY` quando a demonstração terminar**.
+> Sem a variável, `/corrigir-automatico` responde 503 e o resto da API continua
+> funcionando normalmente.
+
 ## Testar depois do deploy
 
 ```bash
