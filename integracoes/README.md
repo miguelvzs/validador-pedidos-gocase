@@ -70,55 +70,29 @@ próprio n8n. Portável por construção.
 2. Importe `n8n_validador_workflow.json` (menu → **Import from File**).
 3. Clique em **Execute workflow** (ou ative o workflow). O nó **Upload da
    planilha** abre um formulário no navegador — abra a URL que o n8n mostra.
-4. Suba o `.xlsx` no formulário. O fluxo:
+4. Suba o `.xlsx` no formulário. O fluxo (**um único workflow**, 6 nós):
    - **Upload da planilha** (Form Trigger) — recebe o arquivo como binário `arquivo`.
    - **POST /validar** — envia para a API e recebe o resumo em JSON.
-   - **Baixar relatórios (.zip)** — puxa o `.zip` da API para o n8n.
+   - **Tem rejeitados?** (IF) — se houver, tenta a correção por IA; se não, vai
+     direto ao download.
+   - **IA corrige rejeitados** — chama `/corrigir-automatico`. A chave da IA fica
+     no servidor, então **nenhuma credencial é necessária no n8n**.
+   - **Baixar relatórios (.zip)** — puxa o `.zip` da API.
    - **Baixar no navegador** (Form completion) — devolve o `.zip` para o
-     navegador de quem enviou. O download é **automático e universal**: não grava
-     em disco (sem caminho fixo nem permissão), funciona em qualquer máquina.
-   - **Tem rejeitados?** (IF, em paralelo) — ramifica em `resumo.total_rejeitados
-     > 0` (ex.: notifica a gestão; senão segue para produção).
+     navegador de quem enviou. Download **automático e universal**: não grava em
+     disco (sem caminho fixo nem permissão), funciona em qualquer máquina.
 
-Se a API estiver noutra máquina/servidor, troque só a URL do nó **POST /validar**.
-Para trocar o formulário por um gatilho real (novo arquivo no SharePoint/Drive),
+### Degradação graciosa
+
+O nó de IA está marcado como *continue on fail* e o download usa
+`{{ $json.job_id || $('POST /validar').item.json.job_id }}`. Consequência: se o
+servidor estiver **sem** a chave da IA (endpoint responde 503), o fluxo **não
+quebra** — segue e entrega os relatórios da validação normal. Com a chave, entrega
+as planilhas já corrigidas. Um workflow cobre os dois cenários.
+
+Se a API estiver noutra máquina/servidor, troque só a URL dos nós HTTP. Para
+trocar o formulário por um gatilho real (novo arquivo no SharePoint/Drive),
 substitua o nó **Upload da planilha** — o resto continua igual.
-
-## Resumo legível
-
-O workflow já traz o nó **Resumo legível** (Set) que monta uma frase com os
-números (`{{ $json.mensagem }}`): "Validação concluída: 40 válidos, 10
-rejeitados (80%)...". Use esse campo no corpo de um e-mail/Teams/Slack.
-
-## Add-on opcional: alerta na gestão (precisa de credencial)
-
-No ramo **true** do IF (`total_rejeitados > 0`), ligue um nó **Email** / **Slack**
-/ **Microsoft Teams** com o corpo `{{ $('Resumo legível').item.json.mensagem }}`.
-Esse nó exige a credencial do canal (SMTP/OAuth) configurada no n8n — por isso
-não vem no workflow (senão quebraria a importação). Configure a credencial e
-conecte o nó.
-
-## Workflow pronto: correção por IA (sem credencial no cliente)
-
-Importe `n8n_correcao_ia_workflow.json`. **Não precisa de chave nenhuma no
-n8n**: quem fala com o Claude é o servidor, pelo endpoint
-`POST /corrigir-automatico` (a chave vive numa variável de ambiente do host,
-ver `DEPLOY.md`). Assim qualquer pessoa roda a versão com IA.
-
-Se o servidor estiver sem a chave configurada, esse endpoint responde **503** e
-o workflow base (`n8n_validador_workflow.json`) continua funcionando.
-
-Fluxo:
-**Upload → POST /validar → IF rejeitados → /corrigir-automatico (IA no servidor)
-→ Resultado → Baixar relatórios (.zip) → Baixar no navegador.**
-
-O download entrega as planilhas **pós-correção**: `pedidos_validados.xlsx` já
-com os pedidos recuperados (marcados nas colunas `corrigido_por_ia` e
-`correcao_ia`) e `pedidos_rejeitados.xlsx` só com o que a IA não conseguiu
-corrigir (ex.: 40→42 válidos e 10→8 rejeitados). Se o lote não tiver rejeitados,
-o ramo `false` do IF vai direto para o mesmo download.
-
-Passos: importe → **Execute workflow** → abra a URL do formulário → suba o `.xlsx`.
 
 ## Power Automate
 

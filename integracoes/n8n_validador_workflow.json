@@ -4,7 +4,7 @@
     {
       "parameters": {
         "formTitle": "Validador de Pedidos GoCase",
-        "formDescription": "Suba a planilha de pedidos (.xlsx) para validar.",
+        "formDescription": "Suba a planilha de pedidos (.xlsx). Os rejeitados passam por uma tentativa de correção automática por IA.",
         "formFields": {
           "values": [
             {
@@ -21,7 +21,7 @@
       "name": "Upload da planilha",
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.1,
-      "position": [280, 300],
+      "position": [240, 300],
       "webhookId": "validador-gocase-form"
     },
     {
@@ -45,7 +45,7 @@
       "name": "POST /validar",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [520, 300]
+      "position": [460, 300]
     },
     {
       "parameters": {
@@ -66,11 +66,27 @@
       "name": "Tem rejeitados?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [760, 220]
+      "position": [680, 300]
     },
     {
       "parameters": {
-        "url": "=https://validador-pedidos-gocase.onrender.com/download/{{ $json.job_id }}",
+        "method": "POST",
+        "url": "https://validador-pedidos-gocase.onrender.com/corrigir-automatico",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ job_id: $json.job_id }) }}",
+        "options": {}
+      },
+      "id": "c4a4a444-4444-4444-8444-444444444444",
+      "name": "IA corrige rejeitados",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 200],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://validador-pedidos-gocase.onrender.com/download/{{ $json.job_id || $('POST /validar').item.json.job_id }}",
         "options": {
           "response": {
             "response": {
@@ -80,11 +96,11 @@
           }
         }
       },
-      "id": "c4a4a444-4444-4444-8444-444444444444",
+      "id": "c5a5a555-5555-4555-8555-555555555555",
       "name": "Baixar relatórios (.zip)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [760, 420]
+      "position": [1120, 300]
     },
     {
       "parameters": {
@@ -95,33 +111,12 @@
         "completionMessage": "Validação concluída — o download do .zip começou.",
         "options": {}
       },
-      "id": "c5a5a555-5555-4555-8555-555555555555",
+      "id": "c6a6a666-6666-4666-8666-666666666666",
       "name": "Baixar no navegador",
       "type": "n8n-nodes-base.form",
       "typeVersion": 1,
-      "position": [980, 420],
+      "position": [1340, 300],
       "webhookId": "validador-gocase-form"
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "a1a1a111-1111-4111-8111-aaaaaaaaaaaa",
-              "name": "mensagem",
-              "type": "string",
-              "value": "=Validação concluída: {{ $json.resumo.total_validos }} válidos, {{ $json.resumo.total_rejeitados }} rejeitados ({{ $json.resumo.percentual_validos }}%). Prioridades: {{ JSON.stringify($json.resumo.por_prioridade) }}. Valor válidos: R$ {{ $json.resumo.valor_total_validos }}."
-            }
-          ]
-        },
-        "includeOtherFields": true,
-        "options": {}
-      },
-      "id": "c6a6a666-6666-4666-8666-666666666666",
-      "name": "Resumo legível",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [980, 180]
     }
   ],
   "connections": {
@@ -129,11 +124,16 @@
       "main": [[{"node": "POST /validar", "type": "main", "index": 0}]]
     },
     "POST /validar": {
-      "main": [[
-        {"node": "Tem rejeitados?", "type": "main", "index": 0},
-        {"node": "Baixar relatórios (.zip)", "type": "main", "index": 0},
-        {"node": "Resumo legível", "type": "main", "index": 0}
-      ]]
+      "main": [[{"node": "Tem rejeitados?", "type": "main", "index": 0}]]
+    },
+    "Tem rejeitados?": {
+      "main": [
+        [{"node": "IA corrige rejeitados", "type": "main", "index": 0}],
+        [{"node": "Baixar relatórios (.zip)", "type": "main", "index": 0}]
+      ]
+    },
+    "IA corrige rejeitados": {
+      "main": [[{"node": "Baixar relatórios (.zip)", "type": "main", "index": 0}]]
     },
     "Baixar relatórios (.zip)": {
       "main": [[{"node": "Baixar no navegador", "type": "main", "index": 0}]]
