@@ -91,6 +91,8 @@
         "operation": "completion",
         "respondWith": "returnBinary",
         "inputDataFieldName": "relatorios",
+        "completionTitle": "Relatórios prontos",
+        "completionMessage": "Validação concluída — o download do .zip começou.",
         "options": {}
       },
       "id": "c5a5a555-5555-4555-8555-555555555555",
