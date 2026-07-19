@@ -66,7 +66,25 @@
       "name": "Tem rejeitados?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [760, 300]
+      "position": [760, 220]
+    },
+    {
+      "parameters": {
+        "url": "=https://validador-pedidos-gocase.onrender.com/download/{{ $json.job_id }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "relatorios"
+            }
+          }
+        }
+      },
+      "id": "c4a4a444-4444-4444-8444-444444444444",
+      "name": "Baixar relatórios (.zip)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 420]
     }
   ],
   "connections": {
@@ -74,7 +92,10 @@
       "main": [[{"node": "POST /validar", "type": "main", "index": 0}]]
     },
     "POST /validar": {
-      "main": [[{"node": "Tem rejeitados?", "type": "main", "index": 0}]]
+      "main": [[
+        {"node": "Tem rejeitados?", "type": "main", "index": 0},
+        {"node": "Baixar relatórios (.zip)", "type": "main", "index": 0}
+      ]]
     }
   },
   "settings": {"executionOrder": "v1"},
