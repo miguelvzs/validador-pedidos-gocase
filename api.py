@@ -5,8 +5,7 @@ standalone (leitura → validação → organização → relatórios) e devolve
 em JSON + os relatórios para download.
 
 Elimina a dependência no cliente: quem consome (frontend Streamlit, Power
-Automate, n8n, ou um navegador) só precisa falar HTTP. Nada de Python instalado
-na máquina do usuário.
+Automate, n8n, ou um navegador) só precisa falar HTTP.
 
 Rodar: uvicorn api:app --host 0.0.0.0 --port 8000
 Docs interativas: http://localhost:8000/docs
@@ -14,6 +13,7 @@ Docs interativas: http://localhost:8000/docs
 
 import base64
 import binascii
+import os
 import shutil
 import tempfile
 import time
@@ -47,11 +47,29 @@ app = FastAPI(
 JOBS_DIR = Path(tempfile.gettempdir()) / "validador_gocase_jobs"
 JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
+# Tempo de vida de um job em segundos. Passado esse prazo, a pasta é apagada
+# na próxima requisição (limpeza preguiçosa). Configurável por ambiente.
+TTL_JOBS_SEG = int(os.environ.get("JOBS_TTL_SEGUNDOS", "3600"))  # 1 hora
+
 NOMES_RELATORIOS = {
     "validados": "pedidos_validados.xlsx",
     "rejeitados": "pedidos_rejeitados.xlsx",
     "resumo": "resumo_execucao.xlsx",
 }
+
+
+def _limpar_jobs_antigos() -> None:
+    """Remove pastas de jobs mais velhas que o TTL.
+
+    Limpeza preguiçosa: roda a cada nova validação, sem thread nem agendador.
+    Usa o mtime da pasta (atualizado quando os relatórios são escritos) para
+    decidir a idade. Falha em apagar um job (ex.: em uso) é ignorada — a
+    próxima requisição tenta de novo.
+    """
+    limite = time.time() - TTL_JOBS_SEG
+    for pasta in JOBS_DIR.iterdir():
+        if pasta.is_dir() and pasta.stat().st_mtime < limite:
+            shutil.rmtree(pasta, ignore_errors=True)
 
 
 @app.get("/")
@@ -66,6 +84,8 @@ def _processar(conteudo: bytes) -> dict:
     Núcleo compartilhado pelos endpoints multipart (/validar) e base64
     (/validar-base64), para não duplicar a lógica.
     """
+    _limpar_jobs_antigos()  # varre jobs vencidos antes de criar um novo
+
     job_id = uuid.uuid4().hex[:12]
     job_dir = JOBS_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)

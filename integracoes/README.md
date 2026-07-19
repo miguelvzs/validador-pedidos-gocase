@@ -15,7 +15,11 @@ Base: `http://SEU_SERVIDOR:8000`
 | `GET` | `/download/{job_id}/{tipo}` | tipo = validados\|rejeitados\|resumo | 1 relatório .xlsx |
 
 Erros: `400` (não é Excel), `422` (planilha com colunas erradas — mensagem
-legível), `404` (job_id inexistente).
+legível), `404` (job_id inexistente ou expirado).
+
+**Janela de download:** os relatórios de um `job_id` ficam disponíveis por
+1 hora (TTL configurável via `JOBS_TTL_SEGUNDOS`); depois a pasta é apagada
+automaticamente. No fluxo, baixe o resultado logo após validar.
 
 Exemplo do `resumo` retornado:
 

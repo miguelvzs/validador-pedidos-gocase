@@ -331,6 +331,9 @@ A mesma API serve também **Power Automate, n8n ou Make**: um fluxo que observa
 uma pasta no SharePoint chama `POST /validar` e devolve o resultado — nenhuma
 dependência no cliente. Docs interativas da API em `http://localhost:8000/docs`.
 
+Os relatórios de cada `job_id` vivem 1 hora e são apagados automaticamente
+(TTL, via `JOBS_TTL_SEGUNDOS`) — o servidor não acumula arquivos temporários.
+
 Uma lógica de validação, quatro formas de consumo (terminal, MCP, API/web,
 low-code) — sem duplicar regra.
 
