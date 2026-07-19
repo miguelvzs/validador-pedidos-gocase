@@ -1,7 +1,7 @@
 # Integrações low-code — Validador de Pedidos GoCase
 
 A API HTTP (`api.py`) é o ponto único de integração. Qualquer ferramenta que
-fale HTTP consome o validador sem instalar nada — n8n, Power Automate, Make.
+fale HTTP consome o validador sem instalar nada. O caminho usado aqui é o n8n.
 
 ## Contrato da API
 
@@ -10,7 +10,7 @@ Base: `http://SEU_SERVIDOR:8000`
 | Método | Rota | Entrada | Saída |
 |---|---|---|---|
 | `POST` | `/validar` | multipart/form-data, campo **`arquivo`** = .xlsx (n8n, web) | JSON `{ job_id, resumo }` |
-| `POST` | `/validar-base64` | JSON `{ nome_arquivo, conteudo_base64 }` (Power Automate) | JSON `{ job_id, resumo }` |
+| `POST` | `/validar-base64` | JSON `{ nome_arquivo, conteudo_base64 }` | JSON `{ job_id, resumo }` |
 | `GET` | `/download/{job_id}` | — | `.zip` com os 3 relatórios |
 | `GET` | `/download/{job_id}/{tipo}` | tipo = validados\|rejeitados\|resumo | 1 relatório .xlsx |
 | `POST` | `/analisar-rejeitados` | JSON `{ job_id }` | contexto (dados+motivos+sugestões) para a IA corrigir |
@@ -94,7 +94,3 @@ Se a API estiver noutra máquina/servidor, troque só a URL dos nós HTTP. Para
 trocar o formulário por um gatilho real (novo arquivo no SharePoint/Drive),
 substitua o nó **Upload da planilha** — o resto continua igual.
 
-## Power Automate
-
-Ver `POWER_AUTOMATE.md` — passo a passo com a ação **HTTP** (POST multipart),
-`Parse JSON` do resumo e `Condition` sobre os rejeitados.

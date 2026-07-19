@@ -67,5 +67,5 @@ Docs interativas: `https://validador-pedidos-gocase.onrender.com/docs`
 ## Antes de dados reais (produção)
 
 Se algum dia a URL for receber pedidos reais, adicione **autenticação por API
-key** (um header verificado na API; ~15 linhas) e configure o n8n/Power Automate
-para enviar a chave. Enquanto isso, mantenha o uso restrito à planilha de exemplo.
+key** (um header verificado na API; ~15 linhas) e configure o n8n para enviar a
+chave. Enquanto isso, mantenha o uso restrito à planilha de exemplo.

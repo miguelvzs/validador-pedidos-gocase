@@ -16,8 +16,8 @@ lugar só e ninguém instala nada na própria máquina:
   HTTP. Inclui os endpoints de correção por IA (`/analisar-rejeitados`,
   `/revalidar`), antes só disponíveis via MCP.
 - **Frontend web (Streamlit)** — o operador sobe a planilha no navegador.
-- **Low-code (n8n / Power Automate / Make)** — um fluxo chama a API ao chegar
-  um arquivo. n8n é o caminho principal na GoCase (ver `integracoes/`).
+- **Low-code (n8n)** — um fluxo chama a API ao chegar um arquivo. É o caminho
+  principal na GoCase (ver `integracoes/`).
 - **MCP Server** — chamável por qualquer ferramenta de IA (Claude Desktop, etc.),
   incluindo a correção assistida de rejeitados.
 
@@ -329,9 +329,9 @@ uvicorn api:app --host 0.0.0.0 --port 8000
 API_URL=http://localhost:8000 streamlit run app_streamlit.py
 ```
 
-A mesma API serve também **Power Automate, n8n ou Make**: um fluxo que observa
-uma pasta no SharePoint chama `POST /validar` e devolve o resultado — nenhuma
-dependência no cliente. Docs interativas da API em `http://localhost:8000/docs`.
+A mesma API serve qualquer cliente HTTP — **n8n** é o caminho usado aqui: um
+fluxo observa uma pasta, chama `POST /validar` e devolve o resultado, sem
+nenhuma dependência no cliente. Docs interativas da API em `http://localhost:8000/docs`.
 
 Os relatórios de cada `job_id` vivem 1 hora e são apagados automaticamente
 (TTL, via `JOBS_TTL_SEGUNDOS`) — o servidor não acumula arquivos temporários.

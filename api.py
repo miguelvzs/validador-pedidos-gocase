@@ -47,7 +47,7 @@ from src.validador import validar_pedidos
 app = FastAPI(
     title="Validador de Pedidos GoCase",
     description="Valida e organiza pedidos de fábrica. Núcleo reutilizável por "
-                "frontend, Power Automate, n8n ou navegador.",
+                "frontend, n8n ou navegador.",
     version="1.0.0",
 )
 
@@ -206,7 +206,7 @@ async def validar(arquivo: UploadFile = File(...)) -> dict:
 
 
 class EntradaBase64(BaseModel):
-    """Corpo JSON do endpoint base64 (fácil de montar no Power Automate)."""
+    """Corpo JSON do endpoint base64, para clientes sem suporte a multipart."""
     nome_arquivo: str = "pedidos.xlsx"
     conteudo_base64: str
 
@@ -216,7 +216,7 @@ def validar_base64(entrada: EntradaBase64) -> dict:
     """Valida uma planilha enviada como base64 num corpo JSON.
 
     Alternativa ao multipart para ferramentas onde montar multipart é
-    trabalhoso (ex.: Power Automate): envie {nome_arquivo, conteudo_base64}.
+    trabalhoso: envie {nome_arquivo, conteudo_base64}.
     """
     try:
         conteudo = base64.b64decode(entrada.conteudo_base64, validate=True)
@@ -253,7 +253,7 @@ def analisar_rejeitados(ref: JobRef) -> dict:
     """Prepara os rejeitados de um job para correção por IA.
 
     Retorna o contexto textual (dados, motivos e sugestões mecânicas) que uma
-    IA — via n8n, Power Automate ou MCP — usa para propor as correções, mais o
+    IA — via n8n ou MCP — usa para propor as correções, mais o
     número de rejeitados. Depois, envie as correções para POST /revalidar.
     """
     job_dir = JOBS_DIR / ref.job_id
@@ -324,7 +324,7 @@ def corrigir_automatico(ref: JobRef) -> dict:
 
     O servidor lê os rejeitados, pede as correções ao Claude com a chave
     configurada em ANTHROPIC_API_KEY e revalida o lote. Quem chama (n8n,
-    Power Automate, navegador) não precisa de credencial nenhuma.
+    navegador) não precisa de credencial nenhuma.
     """
     if not ANTHROPIC_API_KEY:
         raise HTTPException(
