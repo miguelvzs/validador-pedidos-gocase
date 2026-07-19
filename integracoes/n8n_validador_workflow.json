@@ -88,16 +88,17 @@
     },
     {
       "parameters": {
-        "operation": "write",
-        "fileName": "=relatorios_gocase_{{ $('POST /validar').item.json.job_id }}.zip",
-        "dataPropertyName": "relatorios",
+        "operation": "completion",
+        "respondWith": "returnBinary",
+        "inputDataFieldName": "relatorios",
         "options": {}
       },
       "id": "c5a5a555-5555-4555-8555-555555555555",
-      "name": "Salvar em disco",
-      "type": "n8n-nodes-base.readWriteFile",
+      "name": "Baixar no navegador",
+      "type": "n8n-nodes-base.form",
       "typeVersion": 1,
-      "position": [980, 420]
+      "position": [980, 420],
+      "webhookId": "validador-gocase-form"
     }
   ],
   "connections": {
@@ -111,7 +112,7 @@
       ]]
     },
     "Baixar relatórios (.zip)": {
-      "main": [[{"node": "Salvar em disco", "type": "main", "index": 0}]]
+      "main": [[{"node": "Baixar no navegador", "type": "main", "index": 0}]]
     }
   },
   "settings": {"executionOrder": "v1"},

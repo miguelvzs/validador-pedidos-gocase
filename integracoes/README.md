@@ -69,10 +69,13 @@ próprio n8n. Portável por construção.
    planilha** abre um formulário no navegador — abra a URL que o n8n mostra.
 4. Suba o `.xlsx` no formulário. O fluxo:
    - **Upload da planilha** (Form Trigger) — recebe o arquivo como binário `arquivo`.
-   - **POST /validar** — envia para a API (`http://localhost:8000/validar`) e
-     recebe o resumo em JSON.
-   - **Tem rejeitados?** (IF) — ramifica em `resumo.total_rejeitados > 0`
-     (ex.: notifica a gestão; senão segue para produção).
+   - **POST /validar** — envia para a API e recebe o resumo em JSON.
+   - **Baixar relatórios (.zip)** — puxa o `.zip` da API para o n8n.
+   - **Baixar no navegador** (Form completion) — devolve o `.zip` para o
+     navegador de quem enviou. O download é **automático e universal**: não grava
+     em disco (sem caminho fixo nem permissão), funciona em qualquer máquina.
+   - **Tem rejeitados?** (IF, em paralelo) — ramifica em `resumo.total_rejeitados
+     > 0` (ex.: notifica a gestão; senão segue para produção).
 
 Se a API estiver noutra máquina/servidor, troque só a URL do nó **POST /validar**.
 Para trocar o formulário por um gatilho real (novo arquivo no SharePoint/Drive),
