@@ -334,6 +334,14 @@ dependência no cliente. Docs interativas da API em `http://localhost:8000/docs`
 Os relatórios de cada `job_id` vivem 1 hora e são apagados automaticamente
 (TTL, via `JOBS_TTL_SEGUNDOS`) — o servidor não acumula arquivos temporários.
 
+> **⚠️ Escopo do business case — API sem autenticação.** A API sobe **aberta**,
+> por decisão de escopo desta entrega. Em `localhost` é inofensivo. Quando
+> hospedada publicamente (ver [`DEPLOY.md`](DEPLOY.md)), a URL deve ser usada
+> **apenas com a planilha de exemplo (dados sintéticos)** — **não envie pedidos
+> reais** (nome, e-mail, endereço = dados pessoais) para a URL pública sem antes
+> adicionar autenticação por API key. É um passo consciente do roadmap, não um
+> esquecimento.
+
 Uma lógica de validação, quatro formas de consumo (terminal, MCP, API/web,
 low-code) — sem duplicar regra.
 

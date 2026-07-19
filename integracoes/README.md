@@ -47,8 +47,15 @@ na máquina de cada usuário. Dois modelos:
 - **Central (produção):** a API é hospedada uma vez (servidor/VM/nuvem). Todos os
   n8n e usuários apontam para essa URL. Ninguém instala nada.
 - **Portátil (demo/avaliação):** API + n8n na mesma máquina → a URL é
-  `http://localhost:8000`. O workflow abaixo já usa `localhost`, então **importa
-  e roda em qualquer máquina sem editar nada** — basta ter a API no ar ali.
+  `http://localhost:8000`. Basta ter a API no ar ali.
+
+O workflow entregue já aponta para a **URL pública fixa** hospedada no Render
+(`https://validador-pedidos-gocase.onrender.com`), então **importa e roda em
+qualquer máquina sem editar nada nem instalar a API** — ver `DEPLOY.md`. Para o
+modelo portátil (localhost), troque só a URL do nó **POST /validar**.
+
+> **Demo sem autenticação:** a URL pública é aberta. Use apenas com a planilha de
+> exemplo (dados sintéticos); não envie pedidos reais sem adicionar API key.
 
 O workflow **não lê arquivo de disco** (nada de caminho fixo tipo `C:\...`, que
 quebraria em outra máquina): a planilha entra por um **formulário de upload** do

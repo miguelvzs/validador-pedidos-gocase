@@ -1,0 +1,22 @@
+# Blueprint de deploy da API no Render (https://render.com).
+# Como usar: New + → Blueprint → conecte este repositório. O Render lê este
+# arquivo e sobe a API automaticamente, gerando uma URL pública fixa.
+#
+# ATENÇÃO — DEMO: esta API sobe SEM autenticação, por decisão de escopo do
+# business case. Use apenas com a planilha de exemplo (dados sintéticos).
+# Não envie pedidos reais (PII) para esta URL pública sem antes adicionar
+# autenticação (API key).
+services:
+  - type: web
+    name: validador-pedidos-gocase
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements-api.txt"
+    startCommand: "uvicorn api:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      # Versão de Python estável e suportada pelo Render.
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      # TTL de limpeza dos jobs (segundos). 1 hora.
+      - key: JOBS_TTL_SEGUNDOS
+        value: "3600"

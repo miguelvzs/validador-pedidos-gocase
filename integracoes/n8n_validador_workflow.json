@@ -27,7 +27,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://localhost:8000/validar",
+        "url": "https://validador-pedidos-gocase.onrender.com/validar",
         "sendBody": true,
         "contentType": "multipart-form-data",
         "bodyParameters": {
