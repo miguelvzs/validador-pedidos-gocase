@@ -151,6 +151,40 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [1760, 220]
+    },
+    {
+      "parameters": {
+        "url": "=https://validador-pedidos-gocase.onrender.com/download/{{ $json.job_id }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "relatorios"
+            }
+          }
+        }
+      },
+      "id": "dabaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "name": "Baixar relatórios (.zip)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, 300]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "returnBinary",
+        "inputDataFieldName": "relatorios",
+        "completionTitle": "Relatórios prontos",
+        "completionMessage": "Validação e correção concluídas — o download do .zip começou.",
+        "options": {}
+      },
+      "id": "dbcbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "name": "Baixar no navegador",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [2200, 300],
+      "webhookId": "validador-gocase-ia-form"
     }
   ],
   "connections": {
@@ -163,7 +197,7 @@
     "Tem rejeitados?": {
       "main": [
         [{"node": "Analisar rejeitados", "type": "main", "index": 0}],
-        []
+        [{"node": "Baixar relatórios (.zip)", "type": "main", "index": 0}]
       ]
     },
     "Analisar rejeitados": {
@@ -177,6 +211,12 @@
     },
     "Revalidar": {
       "main": [[{"node": "Resultado", "type": "main", "index": 0}]]
+    },
+    "Resultado": {
+      "main": [[{"node": "Baixar relatórios (.zip)", "type": "main", "index": 0}]]
+    },
+    "Baixar relatórios (.zip)": {
+      "main": [[{"node": "Baixar no navegador", "type": "main", "index": 0}]]
     }
   },
   "settings": {"executionOrder": "v1"},

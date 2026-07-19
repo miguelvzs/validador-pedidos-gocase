@@ -101,7 +101,13 @@ conecte o nó.
 
 Importe `n8n_correcao_ia_workflow.json`. Fluxo:
 **Upload → POST /validar → IF rejeitados → /analisar-rejeitados → IA (Claude) →
-Extrair correções → /revalidar → Resultado** (mostra quantos foram recuperados).
+Extrair correções → /revalidar → Resultado → Baixar relatórios (.zip) → Baixar
+no navegador.**
+
+O download entrega as planilhas **pós-correção**: `pedidos_validados.xlsx` já
+com os pedidos recuperados e `pedidos_rejeitados.xlsx` só com o que a IA não
+conseguiu corrigir (ex.: 40→42 válidos e 10→8 rejeitados). Se o lote não tiver
+rejeitados, o ramo `false` do IF vai direto para o mesmo download.
 
 Só falta **plugar sua chave da Anthropic**:
 
