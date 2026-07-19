@@ -12,6 +12,8 @@ Rodar: uvicorn api:app --host 0.0.0.0 --port 8000
 Docs interativas: http://localhost:8000/docs
 """
 
+import base64
+import binascii
 import shutil
 import tempfile
 import time
@@ -21,6 +23,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from src.agente import montar_resumo
 from src.leitor import ler_planilha
@@ -57,26 +60,18 @@ def raiz() -> dict:
     return {"servico": "Validador de Pedidos GoCase", "status": "ok"}
 
 
-@app.post("/validar")
-async def validar(arquivo: UploadFile = File(...)) -> dict:
-    """Valida uma planilha de pedidos e gera os relatórios.
+def _processar(conteudo: bytes) -> dict:
+    """Roda o pipeline sobre os bytes de um .xlsx e devolve {job_id, resumo}.
 
-    Recebe o .xlsx via multipart, roda o pipeline completo e retorna o resumo
-    em JSON com um job_id. Os relatórios ficam disponíveis em
-    GET /download/{job_id}.
+    Núcleo compartilhado pelos endpoints multipart (/validar) e base64
+    (/validar-base64), para não duplicar a lógica.
     """
-    if not arquivo.filename.lower().endswith((".xlsx", ".xls")):
-        raise HTTPException(status_code=400, detail="Envie um arquivo Excel (.xlsx).")
-
-    # Pasta isolada por requisição.
     job_id = uuid.uuid4().hex[:12]
     job_dir = JOBS_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    # Salva o upload em disco: o leitor trabalha com caminho de arquivo.
     entrada = job_dir / "entrada.xlsx"
-    with open(entrada, "wb") as destino:
-        shutil.copyfileobj(arquivo.file, destino)
+    entrada.write_bytes(conteudo)
 
     inicio = time.perf_counter()
     try:
@@ -90,12 +85,43 @@ async def validar(arquivo: UploadFile = File(...)) -> dict:
     tempo = time.perf_counter() - inicio
     resumo = montar_resumo(df_organizados, df_rejeitados, df_original, tempo)
 
-    # Gera os 3 relatórios na pasta do job.
     gerar_relatorio_validados(df_organizados, job_dir / NOMES_RELATORIOS["validados"])
     gerar_relatorio_rejeitados(df_rejeitados, job_dir / NOMES_RELATORIOS["rejeitados"])
     gerar_resumo_execucao(resumo, job_dir / NOMES_RELATORIOS["resumo"])
 
     return {"job_id": job_id, "resumo": resumo}
+
+
+@app.post("/validar")
+async def validar(arquivo: UploadFile = File(...)) -> dict:
+    """Valida uma planilha (multipart) — usado por n8n, Streamlit, navegador.
+
+    Retorna o resumo em JSON com um job_id; os relatórios ficam em
+    GET /download/{job_id}.
+    """
+    if not arquivo.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="Envie um arquivo Excel (.xlsx).")
+    return _processar(await arquivo.read())
+
+
+class EntradaBase64(BaseModel):
+    """Corpo JSON do endpoint base64 (fácil de montar no Power Automate)."""
+    nome_arquivo: str = "pedidos.xlsx"
+    conteudo_base64: str
+
+
+@app.post("/validar-base64")
+def validar_base64(entrada: EntradaBase64) -> dict:
+    """Valida uma planilha enviada como base64 num corpo JSON.
+
+    Alternativa ao multipart para ferramentas onde montar multipart é
+    trabalhoso (ex.: Power Automate): envie {nome_arquivo, conteudo_base64}.
+    """
+    try:
+        conteudo = base64.b64decode(entrada.conteudo_base64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail="conteudo_base64 inválido.")
+    return _processar(conteudo)
 
 
 @app.get("/download/{job_id}")

@@ -9,13 +9,18 @@ Projeto desenvolvido como **business case** para o processo seletivo de Estágio
 em RPA na **GoCase (GoGroup)** — varejo digital que fabrica produtos
 personalizados sob demanda em Extrema/MG.
 
-Uma lógica de validação, **quatro formas de consumo**:
+Uma lógica de validação, **consumida de forma centralizada** — o núcleo roda num
+lugar só e ninguém instala nada na própria máquina:
 
-- **Standalone** — via terminal ou duplo-clique (`Validar Pedidos.bat`).
-- **MCP Server** — chamável por qualquer ferramenta de IA (Claude Desktop,
-  Cursor, n8n, etc.).
-- **API HTTP (FastAPI)** — núcleo de serviço central; zero instalação no cliente.
+- **API HTTP (FastAPI)** — núcleo de serviço; consumível por qualquer cliente HTTP.
 - **Frontend web (Streamlit)** — o operador sobe a planilha no navegador.
+- **Low-code (n8n / Power Automate / Make)** — um fluxo chama a API ao chegar
+  um arquivo. n8n é o caminho principal na GoCase (ver `integracoes/`).
+- **MCP Server** — chamável por qualquer ferramenta de IA (Claude Desktop, etc.),
+  incluindo a correção assistida de rejeitados.
+
+Para desenvolvimento/testes locais ainda existe o modo **terminal**
+(`python main.py`), mas o uso real é centralizado pela API.
 
 ---
 
@@ -109,7 +114,7 @@ isoladamente.
 | `src/relatorio.py` | Gera os 3 Excel formatados (cores por prioridade, bordas, freeze, larguras). |
 | `src/assistente_ia.py` | Camada de IA: prepara rejeitados e aplica correções (via MCP). |
 | `src/agente.py` | Orquestra o fluxo completo, configura logging, monta o resumo. |
-| `main.py` | Entrada standalone (terminal / `.bat`). |
+| `main.py` | Entrada standalone (terminal, dev/testes). |
 | `mcp_server.py` | Entrada MCP Server (stdio, 5 tools + prompt). |
 
 ### Fonte única de verdade
@@ -265,21 +270,9 @@ python main.py
 > **Em produção real**, esse comportamento seria removido — o sistema deveria
 > **falhar com mensagem clara** se a planilha estivesse ausente, em vez de
 > fabricar dados. Por isso o gerador (`src/gerar_dados.py`) é uma ferramenta de
-> teste/demo e **não** tem lançador `.bat` próprio.
+> teste/demo.
 
-### 2. Duplo-clique (funcionário não-técnico)
-
-Use **`Validar Pedidos.bat`**:
-
-1. Coloque a planilha em `data/pedidos_entrada.xlsx`.
-2. Duplo-clique no `.bat`.
-3. A janela processa, mostra o resumo e fica aberta; relatórios em `output/`.
-
-Nenhum terminal ou comando necessário. O `.bat` **detecta o Python** (orienta a
-instalar se faltar) e **instala as dependências no primeiro uso** — o gestor não
-precisa preparar o ambiente. Se algo falhar, a janela mostra o erro e não fecha.
-
-### 3. MCP Server (integração com IA)
+### 2. MCP Server (integração com IA)
 
 ```bash
 python mcp_server.py
@@ -316,7 +309,7 @@ O servidor não embute um modelo próprio nem exige chave de API: a **IA conecta
 
 Exemplo real: 2 e-mails inválidos corrigidos → rejeitados 10 → 8, válidos 40 → 42.
 
-### 4. Serviço central (API + web) — zero instalação no cliente
+### 3. Serviço central (API + web) — zero instalação no cliente
 
 Para uso corporativo, o núcleo roda **num lugar só** e os usuários só falam
 HTTP — sem Python, pip ou bibliotecas na máquina de ninguém. Duas peças:
@@ -392,7 +385,6 @@ Saída esperada: `Todos os 8 testes passaram ✓`.
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
-| `Python nao encontrado` (no `.bat`) | Python não instalado ou fora do PATH. | Instale Python 3.10+ marcando "Add Python to PATH". O `.bat` também tenta o launcher `py`. |
 | `Colunas obrigatórias ausentes` | Planilha real com cabeçalhos diferentes. | Preencha `mapa_colunas` no [config.yaml](#configuração-configyaml) mapeando seus nomes para os canônicos. |
 | `Não consegui atualizar '...xlsx'` | Relatório aberto no Excel trava a escrita. | Feche o arquivo no Excel; o sistema tenta 3× com aviso antes de falhar. |
 | Relatórios com dados que parecem fictícios | Planilha real ausente → `main.py` gerou exemplo. | Aviso em destaque no console indica isso; coloque a planilha real em `data/` e rode de novo. |
@@ -424,7 +416,6 @@ validador-pedidos-gocase/
 ├── api.py                   ← API HTTP FastAPI (núcleo de serviço)
 ├── app_streamlit.py         ← frontend web que consome a API
 ├── testar.py                ← testes de fumaça
-├── Validar Pedidos.bat      ← lançador para usuário não-técnico
 ├── requirements.txt
 └── README.md
 ```
