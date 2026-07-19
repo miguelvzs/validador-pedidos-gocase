@@ -101,6 +101,27 @@
       "typeVersion": 1,
       "position": [980, 420],
       "webhookId": "validador-gocase-form"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1a1a111-1111-4111-8111-aaaaaaaaaaaa",
+              "name": "mensagem",
+              "type": "string",
+              "value": "=Validação concluída: {{ $json.resumo.total_validos }} válidos, {{ $json.resumo.total_rejeitados }} rejeitados ({{ $json.resumo.percentual_validos }}%). Prioridades: {{ JSON.stringify($json.resumo.por_prioridade) }}. Valor válidos: R$ {{ $json.resumo.valor_total_validos }}."
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "c6a6a666-6666-4666-8666-666666666666",
+      "name": "Resumo legível",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [980, 180]
     }
   ],
   "connections": {
@@ -110,7 +131,8 @@
     "POST /validar": {
       "main": [[
         {"node": "Tem rejeitados?", "type": "main", "index": 0},
-        {"node": "Baixar relatórios (.zip)", "type": "main", "index": 0}
+        {"node": "Baixar relatórios (.zip)", "type": "main", "index": 0},
+        {"node": "Resumo legível", "type": "main", "index": 0}
       ]]
     },
     "Baixar relatórios (.zip)": {

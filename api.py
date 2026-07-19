@@ -13,6 +13,8 @@ Docs interativas: http://localhost:8000/docs
 
 import base64
 import binascii
+import io
+import json
 import os
 import shutil
 import tempfile
@@ -26,6 +28,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.agente import montar_resumo
+from src.assistente_ia import aplicar_correcoes, montar_contexto_correcao
 from src.leitor import ler_planilha
 from src.organizador import organizar_pedidos
 from src.relatorio import (
@@ -109,7 +112,20 @@ def _processar(conteudo: bytes) -> dict:
     gerar_relatorio_rejeitados(df_rejeitados, job_dir / NOMES_RELATORIOS["rejeitados"])
     gerar_resumo_execucao(resumo, job_dir / NOMES_RELATORIOS["resumo"])
 
+    # Guarda o resumo em JSON no job: permite /analisar-rejeitados e /revalidar
+    # recuperarem o estado anterior sem recalcular.
+    (job_dir / "resumo.json").write_text(
+        json.dumps(resumo, ensure_ascii=False), encoding="utf-8")
+
     return {"job_id": job_id, "resumo": resumo}
+
+
+def _resumo_do_job(job_dir: Path) -> dict:
+    """Lê o resumo.json salvo no job; dict vazio se não existir."""
+    caminho = job_dir / "resumo.json"
+    if caminho.exists():
+        return json.loads(caminho.read_text(encoding="utf-8"))
+    return {}
 
 
 @app.post("/validar")
@@ -160,6 +176,66 @@ def download(job_id: str) -> FileResponse:
 
     return FileResponse(zip_path, filename="relatorios_gocase.zip",
                         media_type="application/zip")
+
+
+class JobRef(BaseModel):
+    """Referência a um job já validado."""
+    job_id: str
+
+
+@app.post("/analisar-rejeitados")
+def analisar_rejeitados(ref: JobRef) -> dict:
+    """Prepara os rejeitados de um job para correção por IA.
+
+    Retorna o contexto textual (dados, motivos e sugestões mecânicas) que uma
+    IA — via n8n, Power Automate ou MCP — usa para propor as correções, mais o
+    número de rejeitados. Depois, envie as correções para POST /revalidar.
+    """
+    job_dir = JOBS_DIR / ref.job_id
+    rejeitados = job_dir / NOMES_RELATORIOS["rejeitados"]
+    if not rejeitados.exists():
+        raise HTTPException(status_code=404, detail="job_id não encontrado ou expirado.")
+    contexto = montar_contexto_correcao(rejeitados)
+    return {
+        "job_id": ref.job_id,
+        "total_rejeitados": _resumo_do_job(job_dir).get("total_rejeitados"),
+        "contexto": contexto,
+    }
+
+
+class Revalidacao(BaseModel):
+    """Correções propostas pela IA para reprocessar um job."""
+    job_id: str
+    correcoes: list[dict]  # [{"id_pedido", "campo", "valor"}]
+
+
+@app.post("/revalidar")
+def revalidar(req: Revalidacao) -> dict:
+    """Aplica as correções à planilha do job e revalida o lote inteiro.
+
+    Retorna um novo job com o resumo pós-correção e a comparação antes → depois
+    (quantos pedidos foram recuperados). Fecha o ciclo rejeição → correção →
+    aprovação em qualquer cliente HTTP.
+    """
+    job_dir = JOBS_DIR / req.job_id
+    entrada = job_dir / "entrada.xlsx"
+    if not entrada.exists():
+        raise HTTPException(status_code=404, detail="job_id não encontrado ou expirado.")
+
+    antes = _resumo_do_job(job_dir).get("total_rejeitados")
+
+    # Aplica as correções sobre a planilha original e reprocessa como novo job.
+    df = aplicar_correcoes(req.correcoes, entrada)
+    buffer = io.BytesIO()
+    df.to_excel(buffer, index=False, engine="openpyxl")
+    resultado = _processar(buffer.getvalue())
+
+    depois = resultado["resumo"]["total_rejeitados"]
+    resultado["rejeitados_antes"] = antes
+    resultado["rejeitados_depois"] = depois
+    if antes is not None:
+        resultado["recuperados"] = antes - depois
+    return resultado
 
 
 @app.get("/download/{job_id}/{tipo}")

@@ -12,7 +12,9 @@ personalizados sob demanda em Extrema/MG.
 Uma lógica de validação, **consumida de forma centralizada** — o núcleo roda num
 lugar só e ninguém instala nada na própria máquina:
 
-- **API HTTP (FastAPI)** — núcleo de serviço; consumível por qualquer cliente HTTP.
+- **API HTTP (FastAPI)** — núcleo de serviço; consumível por qualquer cliente
+  HTTP. Inclui os endpoints de correção por IA (`/analisar-rejeitados`,
+  `/revalidar`), antes só disponíveis via MCP.
 - **Frontend web (Streamlit)** — o operador sobe a planilha no navegador.
 - **Low-code (n8n / Power Automate / Make)** — um fluxo chama a API ao chegar
   um arquivo. n8n é o caminho principal na GoCase (ver `integracoes/`).

@@ -13,6 +13,8 @@ Base: `http://SEU_SERVIDOR:8000`
 | `POST` | `/validar-base64` | JSON `{ nome_arquivo, conteudo_base64 }` (Power Automate) | JSON `{ job_id, resumo }` |
 | `GET` | `/download/{job_id}` | — | `.zip` com os 3 relatórios |
 | `GET` | `/download/{job_id}/{tipo}` | tipo = validados\|rejeitados\|resumo | 1 relatório .xlsx |
+| `POST` | `/analisar-rejeitados` | JSON `{ job_id }` | contexto (dados+motivos+sugestões) para a IA corrigir |
+| `POST` | `/revalidar` | JSON `{ job_id, correcoes:[{id_pedido,campo,valor}] }` | novo resumo + `recuperados` (antes→depois) |
 
 Erros: `400` (não é Excel), `422` (planilha com colunas erradas — mensagem
 legível), `404` (job_id inexistente ou expirado).
@@ -80,6 +82,37 @@ próprio n8n. Portável por construção.
 Se a API estiver noutra máquina/servidor, troque só a URL do nó **POST /validar**.
 Para trocar o formulário por um gatilho real (novo arquivo no SharePoint/Drive),
 substitua o nó **Upload da planilha** — o resto continua igual.
+
+## Resumo legível
+
+O workflow já traz o nó **Resumo legível** (Set) que monta uma frase com os
+números (`{{ $json.mensagem }}`): "Validação concluída: 40 válidos, 10
+rejeitados (80%)...". Use esse campo no corpo de um e-mail/Teams/Slack.
+
+## Add-on opcional: alerta na gestão (precisa de credencial)
+
+No ramo **true** do IF (`total_rejeitados > 0`), ligue um nó **Email** / **Slack**
+/ **Microsoft Teams** com o corpo `{{ $('Resumo legível').item.json.mensagem }}`.
+Esse nó exige a credencial do canal (SMTP/OAuth) configurada no n8n — por isso
+não vem no workflow (senão quebraria a importação). Configure a credencial e
+conecte o nó.
+
+## Add-on opcional: correção por IA (precisa de credencial de LLM)
+
+Traz a correção assistida (hoje no MCP) para o n8n, usando os endpoints
+`/analisar-rejeitados` e `/revalidar`:
+
+1. No ramo **true** do IF → **HTTP Request** `POST /analisar-rejeitados`, body
+   `{ "job_id": "{{ $('POST /validar').item.json.job_id }}" }`. Retorna o
+   `contexto`.
+2. **Nó de IA** (OpenAI/Anthropic) — prompt: "Corrija os pedidos rejeitados.
+   Devolva SÓ um array JSON `[{id_pedido, campo, valor}]`. Não invente dados
+   que não dá para deduzir." Passe o `contexto` como entrada.
+3. **HTTP Request** `POST /revalidar`, body
+   `{ "job_id": "...", "correcoes": <array da IA> }`. Retorna `recuperados`.
+
+O nó de IA exige a chave da OpenAI/Anthropic no n8n. Sem ela, o ciclo de
+correção não roda — mas a validação e o download seguem funcionando.
 
 ## Power Automate
 
