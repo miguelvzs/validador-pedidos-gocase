@@ -7,3 +7,7 @@ __pycache__/
 .DS_Store
 *.bak
 *.tmp.xlsx
+
+# Documentação em PDF é entregue à parte, fora do repositório.
+docs/
+*.pdf
