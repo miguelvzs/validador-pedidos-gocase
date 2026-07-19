@@ -137,11 +137,27 @@ def aplicar_correcoes(correcoes: list[dict], caminho_entrada: Path) -> pd.DataFr
 
     aplicadas = 0
     for correcao in correcoes:
+        # A correção vem de uma IA: nunca confie no formato. Qualquer item fora
+        # do padrão é ignorado com log, em vez de derrubar a requisição.
+        if not isinstance(correcao, dict):
+            logger.warning("Correção ignorada: item não é objeto (%r)", correcao)
+            continue
+
         id_pedido = correcao.get("id_pedido")
         campo = correcao.get("campo")
         valor = correcao.get("valor")
+
         if campo not in df.columns:
             logger.warning("Correção ignorada: campo inexistente '%s'", campo)
+            continue
+
+        # Só escalares: uma lista/dict em df.at levanta ValueError e quebraria
+        # o lote inteiro por causa de uma sugestão malformada da IA.
+        if not isinstance(valor, (str, int, float, bool, type(None))):
+            logger.warning(
+                "Correção ignorada: valor não escalar em '%s' do pedido %s (%r)",
+                campo, id_pedido, valor,
+            )
             continue
         mascara = df["id_pedido"] == id_pedido
         if not mascara.any():
@@ -149,6 +165,14 @@ def aplicar_correcoes(correcoes: list[dict], caminho_entrada: Path) -> pd.DataFr
             continue
         # Corrige só a primeira ocorrência daquele id.
         idx = df.index[mascara][0]
+
+        # O dtype da coluna pode rejeitar o valor (ex.: a IA manda a quantidade
+        # como "2" numa coluna int). Convertemos para object antes de escrever:
+        # o tipo definitivo é reconstruído na releitura da planilha, que já faz
+        # a coerção de datas e números.
+        if df[campo].dtype != object:
+            df[campo] = df[campo].astype(object)
+
         df.at[idx, campo] = valor
         aplicadas += 1
 

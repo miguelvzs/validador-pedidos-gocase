@@ -225,9 +225,19 @@ def revalidar(req: Revalidacao) -> dict:
     antes = _resumo_do_job(job_dir).get("total_rejeitados")
 
     # Aplica as correções sobre a planilha original e reprocessa como novo job.
-    df = aplicar_correcoes(req.correcoes, entrada)
-    buffer = io.BytesIO()
-    df.to_excel(buffer, index=False, engine="openpyxl")
+    # Correções vêm de uma IA: falha na aplicação vira erro legível, não 500.
+    try:
+        df = aplicar_correcoes(req.correcoes, entrada)
+        buffer = io.BytesIO()
+        df.to_excel(buffer, index=False, engine="openpyxl")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Não foi possível aplicar as correções: {exc}",
+        )
+
     resultado = _processar(buffer.getvalue())
 
     depois = resultado["resumo"]["total_rejeitados"]
