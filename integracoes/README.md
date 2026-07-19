@@ -39,18 +39,37 @@ Exemplo do `resumo` retornado:
 }
 ```
 
+## Onde a API roda (universalidade)
+
+A API é a **única** peça que precisa de Python — mas roda **num lugar só**, não
+na máquina de cada usuário. Dois modelos:
+
+- **Central (produção):** a API é hospedada uma vez (servidor/VM/nuvem). Todos os
+  n8n e usuários apontam para essa URL. Ninguém instala nada.
+- **Portátil (demo/avaliação):** API + n8n na mesma máquina → a URL é
+  `http://localhost:8000`. O workflow abaixo já usa `localhost`, então **importa
+  e roda em qualquer máquina sem editar nada** — basta ter a API no ar ali.
+
+O workflow **não lê arquivo de disco** (nada de caminho fixo tipo `C:\...`, que
+quebraria em outra máquina): a planilha entra por um **formulário de upload** do
+próprio n8n. Portável por construção.
+
 ## n8n (caminho principal na GoCase)
 
-Importe `n8n_validador_workflow.json` (menu → Import from File). O fluxo:
+1. Suba a API na máquina: `uvicorn api:app --host 0.0.0.0 --port 8000`.
+2. Importe `n8n_validador_workflow.json` (menu → **Import from File**).
+3. Clique em **Execute workflow** (ou ative o workflow). O nó **Upload da
+   planilha** abre um formulário no navegador — abra a URL que o n8n mostra.
+4. Suba o `.xlsx` no formulário. O fluxo:
+   - **Upload da planilha** (Form Trigger) — recebe o arquivo como binário `arquivo`.
+   - **POST /validar** — envia para a API (`http://localhost:8000/validar`) e
+     recebe o resumo em JSON.
+   - **Tem rejeitados?** (IF) — ramifica em `resumo.total_rejeitados > 0`
+     (ex.: notifica a gestão; senão segue para produção).
 
-1. **Trigger** — troque o Manual Trigger pelo seu gatilho real (novo arquivo no
-   Google Drive/SharePoint, webhook, schedule).
-2. **HTTP Request** — `POST /validar`, body `multipart/form-data`, campo binário
-   `arquivo`. Aponte a URL para o seu servidor.
-3. **IF** — ramifica em cima de `resumo.total_rejeitados` (ex.: se > 0, notifica
-   a gestão; senão segue para produção).
-
-O nó HTTP Request já vem configurado com o campo `arquivo` e `multipart/form-data`.
+Se a API estiver noutra máquina/servidor, troque só a URL do nó **POST /validar**.
+Para trocar o formulário por um gatilho real (novo arquivo no SharePoint/Drive),
+substitua o nó **Upload da planilha** — o resto continua igual.
 
 ## Power Automate
 

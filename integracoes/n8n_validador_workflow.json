@@ -2,28 +2,32 @@
   "name": "Validador de Pedidos GoCase",
   "nodes": [
     {
-      "parameters": {},
-      "id": "b1a1a111-1111-4111-8111-111111111111",
-      "name": "Início (troque pelo seu gatilho)",
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [260, 300]
-    },
-    {
       "parameters": {
-        "filePath": "=/caminho/para/pedidos_entrada.xlsx",
-        "dataPropertyName": "arquivo"
+        "formTitle": "Validador de Pedidos GoCase",
+        "formDescription": "Suba a planilha de pedidos (.xlsx) para validar.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "arquivo",
+              "fieldType": "file",
+              "acceptFileTypes": ".xlsx",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
       },
-      "id": "b2a2a222-2222-4222-8222-222222222222",
-      "name": "Ler arquivo (ou receber do gatilho)",
-      "type": "n8n-nodes-base.readBinaryFile",
-      "typeVersion": 1,
-      "position": [480, 300]
+      "id": "c1a1a111-1111-4111-8111-111111111111",
+      "name": "Upload da planilha",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.1,
+      "position": [280, 300],
+      "webhookId": "validador-gocase-form"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "http://SEU_SERVIDOR:8000/validar",
+        "url": "http://localhost:8000/validar",
         "sendBody": true,
         "contentType": "multipart-form-data",
         "bodyParameters": {
@@ -37,11 +41,11 @@
         },
         "options": {}
       },
-      "id": "b3a3a333-3333-4333-8333-333333333333",
+      "id": "c2a2a222-2222-4222-8222-222222222222",
       "name": "POST /validar",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [700, 300]
+      "position": [520, 300]
     },
     {
       "parameters": {
@@ -58,18 +62,15 @@
         },
         "options": {}
       },
-      "id": "b4a4a444-4444-4444-8444-444444444444",
+      "id": "c3a3a333-3333-4333-8333-333333333333",
       "name": "Tem rejeitados?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [920, 300]
+      "position": [760, 300]
     }
   ],
   "connections": {
-    "Início (troque pelo seu gatilho)": {
-      "main": [[{"node": "Ler arquivo (ou receber do gatilho)", "type": "main", "index": 0}]]
-    },
-    "Ler arquivo (ou receber do gatilho)": {
+    "Upload da planilha": {
       "main": [[{"node": "POST /validar", "type": "main", "index": 0}]]
     },
     "POST /validar": {
