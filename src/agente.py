@@ -34,6 +34,54 @@ CAMINHO_LOG = DIR_SISTEMA / "log_execucao.log"
 CAMINHO_CACHE_RESUMO = DIR_SISTEMA / "ultimo_resumo.json"
 
 
+def montar_resumo(df_validos: pd.DataFrame, df_rejeitados: pd.DataFrame,
+                  df_original: pd.DataFrame, tempo_execucao: float) -> dict:
+    """Consolida TODAS as métricas da execução num único dict.
+
+    Fonte de verdade: log, planilha de resumo, cache MCP e API consomem este
+    dict, sem recalcular. As faixas de prioridade seguem a ordem da config,
+    então renomear/reordenar no config.yaml reflete aqui.
+    """
+    total = len(df_original)
+    n_validos = len(df_validos)
+    n_rejeitados = len(df_rejeitados)
+
+    # Contagem por faixa, na ordem da config (0 quando a faixa não tem itens).
+    if "prioridade" in df_validos.columns and not df_validos.empty:
+        contagem = df_validos["prioridade"].value_counts()
+    else:
+        contagem = pd.Series(dtype="int64")
+    por_prioridade = {
+        faixa: int(contagem.get(faixa, 0)) for faixa in config.ordem_prioridade
+    }
+
+    # Pedidos por canal, a partir da base original.
+    if "canal" in df_original.columns and not df_original.empty:
+        por_canal = {c: int(q) for c, q in df_original["canal"].value_counts().items()}
+    else:
+        por_canal = {}
+
+    valor_validos = float(df_validos["valor_total"].sum()) if not df_validos.empty else 0.0
+    valor_rejeitados = (
+        float(df_rejeitados["valor_total"].sum(min_count=1) or 0.0)
+        if not df_rejeitados.empty else 0.0
+    )
+
+    return {
+        "data_hora": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "total_processados": total,
+        "total_validos": n_validos,
+        "total_rejeitados": n_rejeitados,
+        "percentual_validos": round((n_validos / total * 100) if total else 0.0, 1),
+        "percentual_rejeitados": round((n_rejeitados / total * 100) if total else 0.0, 1),
+        "por_prioridade": por_prioridade,
+        "por_canal": por_canal,
+        "valor_total_validos": round(valor_validos, 2),
+        "valor_total_rejeitados": round(valor_rejeitados, 2),
+        "tempo_execucao_segundos": round(tempo_execucao, 2),
+    }
+
+
 class AgenteValidador:
     """Agente que orquestra o fluxo completo de validação de pedidos.
 
@@ -152,50 +200,8 @@ class AgenteValidador:
 
     def _montar_resumo(self, df_validos: pd.DataFrame, df_rejeitados: pd.DataFrame,
                        df_original: pd.DataFrame, tempo_execucao: float) -> dict:
-        """Consolida TODAS as métricas da execução num único dict.
-
-        Fonte de verdade: log, planilha de resumo e cache MCP consomem este
-        dict, sem recalcular. As faixas de prioridade seguem a ordem da config,
-        então renomear/reordenar no config.yaml reflete aqui.
-        """
-        total = len(df_original)
-        n_validos = len(df_validos)
-        n_rejeitados = len(df_rejeitados)
-
-        # Contagem por faixa, na ordem da config (0 quando a faixa não tem itens).
-        if "prioridade" in df_validos.columns and not df_validos.empty:
-            contagem = df_validos["prioridade"].value_counts()
-        else:
-            contagem = pd.Series(dtype="int64")
-        por_prioridade = {
-            faixa: int(contagem.get(faixa, 0)) for faixa in config.ordem_prioridade
-        }
-
-        # Pedidos por canal, a partir da base original.
-        if "canal" in df_original.columns and not df_original.empty:
-            por_canal = {c: int(q) for c, q in df_original["canal"].value_counts().items()}
-        else:
-            por_canal = {}
-
-        valor_validos = float(df_validos["valor_total"].sum()) if not df_validos.empty else 0.0
-        valor_rejeitados = (
-            float(df_rejeitados["valor_total"].sum(min_count=1) or 0.0)
-            if not df_rejeitados.empty else 0.0
-        )
-
-        return {
-            "data_hora": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-            "total_processados": total,
-            "total_validos": n_validos,
-            "total_rejeitados": n_rejeitados,
-            "percentual_validos": round((n_validos / total * 100) if total else 0.0, 1),
-            "percentual_rejeitados": round((n_rejeitados / total * 100) if total else 0.0, 1),
-            "por_prioridade": por_prioridade,
-            "por_canal": por_canal,
-            "valor_total_validos": round(valor_validos, 2),
-            "valor_total_rejeitados": round(valor_rejeitados, 2),
-            "tempo_execucao_segundos": round(tempo_execucao, 2),
-        }
+        """Delega para a função de módulo montar_resumo (reutilizável pela API)."""
+        return montar_resumo(df_validos, df_rejeitados, df_original, tempo_execucao)
 
     def _logar_resumo(self, resumo: dict) -> None:
         """Escreve o resumo no log, de forma legível."""

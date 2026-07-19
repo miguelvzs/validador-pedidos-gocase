@@ -9,11 +9,13 @@ Projeto desenvolvido como **business case** para o processo seletivo de Estágio
 em RPA na **GoCase (GoGroup)** — varejo digital que fabrica produtos
 personalizados sob demanda em Extrema/MG.
 
-Funciona em **dois modos**:
+Uma lógica de validação, **quatro formas de consumo**:
 
 - **Standalone** — via terminal ou duplo-clique (`Validar Pedidos.bat`).
 - **MCP Server** — chamável por qualquer ferramenta de IA (Claude Desktop,
   Cursor, n8n, etc.).
+- **API HTTP (FastAPI)** — núcleo de serviço central; zero instalação no cliente.
+- **Frontend web (Streamlit)** — o operador sobe a planilha no navegador.
 
 ---
 
@@ -314,6 +316,31 @@ O servidor não embute um modelo próprio nem exige chave de API: a **IA conecta
 
 Exemplo real: 2 e-mails inválidos corrigidos → rejeitados 10 → 8, válidos 40 → 42.
 
+### 4. Serviço central (API + web) — zero instalação no cliente
+
+Para uso corporativo, o núcleo roda **num lugar só** e os usuários só falam
+HTTP — sem Python, pip ou bibliotecas na máquina de ninguém. Duas peças:
+
+- **`api.py`** — API HTTP (FastAPI) que expõe o mesmo pipeline:
+  `POST /validar` (envia a planilha, recebe o resumo em JSON + `job_id`) e
+  `GET /download/{job_id}` (baixa os 3 relatórios num `.zip`).
+- **`app_streamlit.py`** — frontend web que consome a API. O operador abre no
+  navegador, sobe a planilha e baixa o resultado.
+
+```bash
+# 1. sobe a API (num servidor/VM/nuvem)
+uvicorn api:app --host 0.0.0.0 --port 8000
+# 2. sobe o frontend (aponta para a API via API_URL)
+API_URL=http://localhost:8000 streamlit run app_streamlit.py
+```
+
+A mesma API serve também **Power Automate, n8n ou Make**: um fluxo que observa
+uma pasta no SharePoint chama `POST /validar` e devolve o resultado — nenhuma
+dependência no cliente. Docs interativas da API em `http://localhost:8000/docs`.
+
+Uma lógica de validação, quatro formas de consumo (terminal, MCP, API/web,
+low-code) — sem duplicar regra.
+
 ---
 
 ## Decisões de design
@@ -394,6 +421,8 @@ validador-pedidos-gocase/
 ├── config.yaml              ← regras de negócio editáveis (sem tocar código)
 ├── main.py                  ← entrada standalone (terminal)
 ├── mcp_server.py            ← entrada MCP Server (5 tools + prompt)
+├── api.py                   ← API HTTP FastAPI (núcleo de serviço)
+├── app_streamlit.py         ← frontend web que consome a API
 ├── testar.py                ← testes de fumaça
 ├── Validar Pedidos.bat      ← lançador para usuário não-técnico
 ├── requirements.txt
