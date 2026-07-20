@@ -15,7 +15,6 @@ lugar só e ninguém instala nada na própria máquina:
 - **API HTTP (FastAPI)** — núcleo de serviço; consumível por qualquer cliente
   HTTP. Inclui os endpoints de correção por IA (`/analisar-rejeitados`,
   `/revalidar`), antes só disponíveis via MCP.
-- **Frontend web (Streamlit)** — o operador sobe a planilha no navegador.
 - **Low-code (n8n e afins)** — um fluxo chama a API ao chegar um arquivo. O n8n
   é o caminho principal na GoCase e tem workflow pronto (ver `integracoes/`);
   como a API é HTTP puro, Make, Power Automate ou Zapier consomem igual.
@@ -96,9 +95,9 @@ Este agente atua como um **filtro automático antes da produção**:
        (organizados)         (+ motivo_rejeicao)
 ```
 
-Cada etapa é isolada em `try/except`: se uma falha, o erro é logado e as etapas
-seguintes que ainda fizerem sentido continuam. O orquestrador é o
-`AgenteValidador` (`src/agente.py`).
+Esse fluxo vive em **uma única função** — `executar_pipeline` (`src/agente.py`) —
+usada tanto pelo modo arquivo quanto pela API. Cada consumidor só decide o
+destino dos relatórios e como reportar falhas (log no terminal, HTTP 422 na API).
 
 ---
 
@@ -116,9 +115,10 @@ isoladamente.
 | `src/organizador.py` | Calcula `dias_restantes` e `prioridade`; ordena os válidos para produção. |
 | `src/relatorio.py` | Gera os 3 Excel formatados (cores por prioridade, bordas, freeze, larguras). |
 | `src/assistente_ia.py` | Camada de IA: prepara rejeitados e aplica correções (via MCP). |
-| `src/agente.py` | Orquestra o fluxo completo, configura logging, monta o resumo. |
+| `src/agente.py` | `executar_pipeline` (fluxo único), `montar_resumo` e o `AgenteValidador` do modo arquivo. |
 | `main.py` | Entrada standalone (terminal, dev/testes). |
 | `mcp_server.py` | Entrada MCP Server (stdio, 5 tools + prompt). |
+| `api.py` | Entrada HTTP (FastAPI): validação, download e correção por IA. |
 
 ### Fonte única de verdade
 
@@ -320,15 +320,6 @@ HTTP — sem Python, pip ou bibliotecas na máquina de ninguém. Duas peças:
 - **`api.py`** — API HTTP (FastAPI) que expõe o mesmo pipeline:
   `POST /validar` (envia a planilha, recebe o resumo em JSON + `job_id`) e
   `GET /download/{job_id}` (baixa os 3 relatórios num `.zip`).
-- **`app_streamlit.py`** — frontend web que consome a API. O operador abre no
-  navegador, sobe a planilha e baixa o resultado.
-
-```bash
-# 1. sobe a API (num servidor/VM/nuvem)
-uvicorn api:app --host 0.0.0.0 --port 8000
-# 2. sobe o frontend (aponta para a API via API_URL)
-API_URL=http://localhost:8000 streamlit run app_streamlit.py
-```
 
 A mesma API serve qualquer cliente HTTP — **n8n** é o caminho usado aqui: um
 fluxo observa uma pasta, chama `POST /validar` e devolve o resultado, sem
@@ -380,7 +371,7 @@ Escolhas que não são óbvias pelo código:
 python testar.py
 ```
 
-Roda o fluxo completo e verifica **8 pontos**:
+Roda o fluxo completo e verifica **11 pontos**:
 
 1. Planilha de entrada gerada (50 pedidos).
 2. Agente executa sem exceção.
@@ -390,8 +381,11 @@ Roda o fluxo completo e verifica **8 pontos**:
 6. `log_execucao.log` existe e não está vazio.
 7. Consistência: `válidos + rejeitados == total`.
 8. Todos os rejeitados têm `motivo_rejeicao` preenchido.
+9. API `POST /validar` responde com resumo coerente.
+10. API `GET /download` devolve o `.zip` com os 3 relatórios.
+11. API recusa planilha fora do formato com HTTP 422 (não 500).
 
-Saída esperada: `Todos os 8 testes passaram ✓`.
+Saída esperada: `Todos os 11 testes passaram ✓`.
 
 ---
 
@@ -428,7 +422,6 @@ validador-pedidos-gocase/
 ├── main.py                  ← entrada standalone (terminal)
 ├── mcp_server.py            ← entrada MCP Server (5 tools + prompt)
 ├── api.py                   ← API HTTP FastAPI (núcleo de serviço)
-├── app_streamlit.py         ← frontend web que consome a API
 ├── testar.py                ← testes de fumaça
 ├── requirements.txt
 └── README.md

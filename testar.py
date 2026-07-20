@@ -1,6 +1,8 @@
 """Testa o fluxo completo do agente e verifica se os outputs foram gerados corretamente."""
 
+import io
 import sys
+import zipfile
 from pathlib import Path
 
 # Console Windows usa cp1252 por padrão e quebra ao imprimir ✓/✗. Força UTF-8
@@ -30,7 +32,7 @@ def _falha(msg: str) -> None:
 
 def main() -> int:
     passaram = 0
-    total_testes = 8
+    total_testes = 11
 
     # 1. Gerar dados de exemplo.
     gerar_planilha_exemplo()
@@ -110,12 +112,72 @@ def main() -> int:
     else:
         _falha("Não foi possível verificar motivos de rejeição")
 
+    # 9-11. API HTTP — o caminho realmente usado em produção.
+    passaram += _testar_api(CAMINHO_ENTRADA.read_bytes())
+
     print()
     if passaram == total_testes:
         print(f"Todos os {total_testes} testes passaram ✓")
         return 0
     print(f"{passaram}/{total_testes} testes passaram")
     return 1
+
+
+def _testar_api(planilha: bytes) -> int:
+    """Exercita a API em memória (sem subir servidor) e devolve quantos passaram.
+
+    Cobre o caminho que o n8n e o navegador usam de verdade: validar, baixar o
+    pacote de relatórios e recusar planilha fora do formato.
+    """
+    from fastapi.testclient import TestClient
+
+    import api
+
+    cliente = TestClient(api.app)
+    passaram = 0
+
+    # 9. POST /validar devolve job_id e resumo coerente.
+    resposta = cliente.post("/validar", files={"arquivo": ("pedidos.xlsx", planilha)})
+    if resposta.status_code == 200:
+        corpo = resposta.json()
+        resumo = corpo["resumo"]
+        if resumo["total_validos"] + resumo["total_rejeitados"] == resumo["total_processados"]:
+            _ok(f"API POST /validar ({resumo['total_validos']} válidos, "
+                f"{resumo['total_rejeitados']} rejeitados)")
+            passaram += 1
+        else:
+            _falha("API POST /validar — resumo inconsistente")
+        job_id = corpo["job_id"]
+    else:
+        _falha(f"API POST /validar — HTTP {resposta.status_code}")
+        job_id = None
+
+    # 10. GET /download devolve o .zip com os 3 relatórios.
+    if job_id:
+        zip_resp = cliente.get(f"/download/{job_id}")
+        nomes = []
+        if zip_resp.status_code == 200:
+            with zipfile.ZipFile(io.BytesIO(zip_resp.content)) as pacote:
+                nomes = pacote.namelist()
+        if len(nomes) == 3:
+            _ok(f"API GET /download — .zip com {len(nomes)} relatórios")
+            passaram += 1
+        else:
+            _falha(f"API GET /download — esperado 3 relatórios, veio {len(nomes)}")
+    else:
+        _falha("API GET /download — sem job_id para consultar")
+
+    # 11. Planilha fora do formato é recusada com erro legível (não 500).
+    invalida = io.BytesIO()
+    pd.DataFrame({"coluna_errada": [1]}).to_excel(invalida, index=False, engine="openpyxl")
+    erro = cliente.post("/validar", files={"arquivo": ("ruim.xlsx", invalida.getvalue())})
+    if erro.status_code == 422:
+        _ok("API recusa planilha fora do formato (HTTP 422)")
+        passaram += 1
+    else:
+        _falha(f"API deveria responder 422 para planilha inválida, veio {erro.status_code}")
+
+    return passaram
 
 
 if __name__ == "__main__":

@@ -20,18 +20,54 @@ from src.relatorio import (
 )
 from src.validador import validar_pedidos
 
+# Nomes dos relatórios: fonte única, usada tanto pelo modo arquivo quanto pela
+# API (que grava os mesmos arquivos na pasta do job).
+NOMES_RELATORIOS = {
+    "validados": "pedidos_validados.xlsx",
+    "rejeitados": "pedidos_rejeitados.xlsx",
+    "resumo": "resumo_execucao.xlsx",
+}
+
 # Caminhos de saída padronizados num só lugar para evitar strings soltas.
 DIR_DATA = Path("data")
 DIR_OUTPUT = Path("output")
 # Artefatos internos (log/cache) ficam numa subpasta separada para que o
 # operador veja apenas as 3 planilhas em output/, sem lixo técnico no meio.
 DIR_SISTEMA = DIR_OUTPUT / "_sistema"
-CAMINHO_VALIDADOS = DIR_OUTPUT / "pedidos_validados.xlsx"
-CAMINHO_REJEITADOS = DIR_OUTPUT / "pedidos_rejeitados.xlsx"
-CAMINHO_RESUMO = DIR_OUTPUT / "resumo_execucao.xlsx"
+CAMINHO_VALIDADOS = DIR_OUTPUT / NOMES_RELATORIOS["validados"]
+CAMINHO_REJEITADOS = DIR_OUTPUT / NOMES_RELATORIOS["rejeitados"]
+CAMINHO_RESUMO = DIR_OUTPUT / NOMES_RELATORIOS["resumo"]
 CAMINHO_LOG = DIR_SISTEMA / "log_execucao.log"
 # Cache do último resumo: permite consultar_resumo sem reexecutar o pipeline.
 CAMINHO_CACHE_RESUMO = DIR_SISTEMA / "ultimo_resumo.json"
+
+
+def executar_pipeline(caminho_entrada: Path, dir_saida: Path) -> dict:
+    """Executa o fluxo completo e grava os 3 relatórios em `dir_saida`.
+
+    Fonte única do pipeline: leitura → validação → organização → resumo →
+    relatórios. Usada tanto pelo modo arquivo (AgenteValidador, saída fixa em
+    output/) quanto pela API (saída na pasta do job), evitando duas
+    implementações da mesma sequência.
+
+    Retorna o dict de resumo. Propaga exceções para quem chama decidir como
+    reportá-las (log no modo arquivo, HTTP 422 na API).
+    """
+    inicio = time.perf_counter()
+
+    df_original = ler_planilha(caminho_entrada)
+    df_validos, df_rejeitados = validar_pedidos(df_original)
+    df_organizados = organizar_pedidos(df_validos)
+
+    resumo = montar_resumo(df_organizados, df_rejeitados, df_original,
+                           time.perf_counter() - inicio)
+
+    os.makedirs(dir_saida, exist_ok=True)
+    gerar_relatorio_validados(df_organizados, dir_saida / NOMES_RELATORIOS["validados"])
+    gerar_relatorio_rejeitados(df_rejeitados, dir_saida / NOMES_RELATORIOS["rejeitados"])
+    gerar_resumo_execucao(resumo, dir_saida / NOMES_RELATORIOS["resumo"])
+
+    return resumo
 
 
 def montar_resumo(df_validos: pd.DataFrame, df_rejeitados: pd.DataFrame,
@@ -137,79 +173,29 @@ class AgenteValidador:
         logger_raiz.addHandler(handler_arquivo)
 
     def executar(self, caminho_entrada: str = "data/pedidos_entrada.xlsx") -> dict:
-        """Executa o pipeline completo e retorna o dict de resumo.
+        """Executa o pipeline sobre a planilha e grava os relatórios em output/.
 
-        Cada etapa é isolada em try/except: uma falha é logada mas não aborta
-        as etapas seguintes que ainda fizerem sentido.
+        Delega o fluxo para `executar_pipeline` (fonte única, compartilhada com
+        a API) e cuida do que é próprio do modo arquivo: log, cache do resumo e
+        tratamento de falha sem derrubar o processo.
         """
-        inicio = time.perf_counter()
         self.logger.info("Iniciando execução do agente validador.")
 
-        df_original = pd.DataFrame()
-        df_validos = pd.DataFrame()
-        df_rejeitados = pd.DataFrame()
-        df_organizados = pd.DataFrame()
-
-        # Etapa 1: leitura.
         try:
-            self.logger.info("[Etapa 1/5] Lendo planilha de entrada...")
-            df_original = ler_planilha(Path(caminho_entrada))
-            self.logger.info("[Etapa 1/5] Leitura concluída.")
+            resumo = executar_pipeline(Path(caminho_entrada), DIR_OUTPUT)
         except Exception as exc:
-            self.logger.error("[Etapa 1/5] Falha na leitura: %s", exc)
-            # Sem dados de entrada não há o que validar: encerra com resumo vazio.
-            return self._montar_resumo(df_validos, df_rejeitados, df_original,
-                                       time.perf_counter() - inicio)
+            # Modo arquivo não propaga exceção: registra e devolve resumo vazio,
+            # para que quem chamou (terminal, MCP) siga com uma resposta útil.
+            self.logger.error("Falha na execução: %s", exc)
+            vazio = pd.DataFrame()
+            return montar_resumo(vazio, vazio, vazio, 0.0)
 
-        # Etapa 2: validação.
-        try:
-            self.logger.info("[Etapa 2/5] Validando pedidos...")
-            df_validos, df_rejeitados = validar_pedidos(df_original)
-            self.logger.info("[Etapa 2/5] Validação concluída.")
-        except Exception as exc:
-            self.logger.error("[Etapa 2/5] Falha na validação: %s", exc)
-
-        # Etapa 3: organização dos válidos.
-        try:
-            self.logger.info("[Etapa 3/5] Organizando por prioridade...")
-            df_organizados = organizar_pedidos(df_validos)
-            self.logger.info("[Etapa 3/5] Organização concluída.")
-        except Exception as exc:
-            self.logger.error("[Etapa 3/5] Falha na organização: %s", exc)
-            df_organizados = df_validos
-
-        tempo_execucao = time.perf_counter() - inicio
-
-        # Resumo montado uma única vez aqui: fonte de verdade das métricas,
-        # consumida tanto pelo relatório quanto pelo log e pelo cache.
-        resumo = self._montar_resumo(df_organizados, df_rejeitados, df_original, tempo_execucao)
-
-        # Etapa 4: relatórios. Cada arquivo é isolado para que a falha de um
-        # não impeça a geração dos demais.
-        self.logger.info("[Etapa 4/5] Gerando relatórios Excel...")
-        for descricao, funcao in (
-            ("validados", lambda: gerar_relatorio_validados(df_organizados, CAMINHO_VALIDADOS)),
-            ("rejeitados", lambda: gerar_relatorio_rejeitados(df_rejeitados, CAMINHO_REJEITADOS)),
-            ("resumo", lambda: gerar_resumo_execucao(resumo, CAMINHO_RESUMO)),
-        ):
-            try:
-                funcao()
-            except Exception as exc:
-                self.logger.error("[Etapa 4/5] Falha ao gerar relatório %s: %s", descricao, exc)
-        self.logger.info("[Etapa 4/5] Relatórios concluídos.")
-
-        # Etapa 5: registra o resumo no log e no cache (usado pelo MCP).
-        self.logger.info("[Etapa 5/5] Resumo da execução:")
+        self.logger.info("Resumo da execução:")
         self._logar_resumo(resumo)
         self._salvar_cache_resumo(resumo)
 
         self.logger.info("Execução finalizada em %.2fs.", resumo["tempo_execucao_segundos"])
         return resumo
-
-    def _montar_resumo(self, df_validos: pd.DataFrame, df_rejeitados: pd.DataFrame,
-                       df_original: pd.DataFrame, tempo_execucao: float) -> dict:
-        """Delega para a função de módulo montar_resumo (reutilizável pela API)."""
-        return montar_resumo(df_validos, df_rejeitados, df_original, tempo_execucao)
 
     def _logar_resumo(self, resumo: dict) -> None:
         """Escreve o resumo no log, de forma legível."""

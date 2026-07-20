@@ -1,5 +1,5 @@
 # Dependências mínimas para hospedar SÓ a API (api.py) — usado no deploy.
-# Evita instalar streamlit/mcp no servidor, deixando o build mais rápido e leve.
+# Evita instalar o pacote mcp no servidor, deixando o build mais rápido e leve.
 pandas>=2.0.0
 openpyxl>=3.1.0
 pyyaml>=6.0

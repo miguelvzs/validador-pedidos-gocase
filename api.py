@@ -4,15 +4,13 @@ Núcleo de serviço: recebe uma planilha, roda o MESMO pipeline do modo
 standalone (leitura → validação → organização → relatórios) e devolve o resumo
 em JSON + os relatórios para download.
 
-Elimina a dependência no cliente: quem consome (frontend Streamlit, Power
-Automate, n8n, ou um navegador) só precisa falar HTTP.
+Elimina a dependência no cliente: quem consome (n8n, navegador ou qualquer
+outro cliente HTTP) não instala nada.
 
 Rodar: uvicorn api:app --host 0.0.0.0 --port 8000
 Docs interativas: http://localhost:8000/docs
 """
 
-import base64
-import binascii
 import io
 import json
 import os
@@ -29,25 +27,17 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from src.agente import montar_resumo
+from src.agente import NOMES_RELATORIOS, executar_pipeline
 from src.assistente_ia import (
     aplicar_correcoes,
     marcar_correcoes,
     montar_contexto_correcao,
 )
-from src.leitor import ler_planilha
-from src.organizador import organizar_pedidos
-from src.relatorio import (
-    gerar_relatorio_rejeitados,
-    gerar_relatorio_validados,
-    gerar_resumo_execucao,
-)
-from src.validador import validar_pedidos
 
 app = FastAPI(
     title="Validador de Pedidos GoCase",
     description="Valida e organiza pedidos de fábrica. Núcleo reutilizável por "
-                "frontend, n8n ou navegador.",
+                "n8n, navegador ou qualquer cliente HTTP.",
     version="1.0.0",
 )
 
@@ -119,12 +109,6 @@ def _pedir_correcoes_ia(contexto: str) -> list[dict]:
     except json.JSONDecodeError:
         return []
 
-NOMES_RELATORIOS = {
-    "validados": "pedidos_validados.xlsx",
-    "rejeitados": "pedidos_rejeitados.xlsx",
-    "resumo": "resumo_execucao.xlsx",
-}
-
 
 def _limpar_jobs_antigos() -> None:
     """Remove pastas de jobs mais velhas que o TTL.
@@ -149,8 +133,9 @@ def raiz() -> dict:
 def _processar(conteudo: bytes) -> dict:
     """Roda o pipeline sobre os bytes de um .xlsx e devolve {job_id, resumo}.
 
-    Núcleo compartilhado pelos endpoints multipart (/validar) e base64
-    (/validar-base64), para não duplicar a lógica.
+    O fluxo em si vem de `executar_pipeline` (compartilhado com o modo
+    arquivo); aqui cuidamos do que é próprio da API: pasta isolada por
+    requisição, cache do resumo e tradução de erro de dados em HTTP 422.
     """
     _limpar_jobs_antigos()  # varre jobs vencidos antes de criar um novo
 
@@ -161,21 +146,11 @@ def _processar(conteudo: bytes) -> dict:
     entrada = job_dir / "entrada.xlsx"
     entrada.write_bytes(conteudo)
 
-    inicio = time.perf_counter()
     try:
-        df_original = ler_planilha(entrada)
-        df_validos, df_rejeitados = validar_pedidos(df_original)
-        df_organizados = organizar_pedidos(df_validos)
+        resumo = executar_pipeline(entrada, job_dir)
     except ValueError as exc:
         # Erro de dados (coluna faltando etc.): resposta clara, não 500.
         raise HTTPException(status_code=422, detail=str(exc))
-
-    tempo = time.perf_counter() - inicio
-    resumo = montar_resumo(df_organizados, df_rejeitados, df_original, tempo)
-
-    gerar_relatorio_validados(df_organizados, job_dir / NOMES_RELATORIOS["validados"])
-    gerar_relatorio_rejeitados(df_rejeitados, job_dir / NOMES_RELATORIOS["rejeitados"])
-    gerar_resumo_execucao(resumo, job_dir / NOMES_RELATORIOS["resumo"])
 
     # Guarda o resumo em JSON no job: permite /analisar-rejeitados e /revalidar
     # recuperarem o estado anterior sem recalcular.
@@ -195,7 +170,7 @@ def _resumo_do_job(job_dir: Path) -> dict:
 
 @app.post("/validar")
 async def validar(arquivo: UploadFile = File(...)) -> dict:
-    """Valida uma planilha (multipart) — usado por n8n, Streamlit, navegador.
+    """Valida uma planilha (multipart) — usado pelo n8n e por qualquer cliente HTTP.
 
     Retorna o resumo em JSON com um job_id; os relatórios ficam em
     GET /download/{job_id}.
@@ -203,26 +178,6 @@ async def validar(arquivo: UploadFile = File(...)) -> dict:
     if not arquivo.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Envie um arquivo Excel (.xlsx).")
     return _processar(await arquivo.read())
-
-
-class EntradaBase64(BaseModel):
-    """Corpo JSON do endpoint base64, para clientes sem suporte a multipart."""
-    nome_arquivo: str = "pedidos.xlsx"
-    conteudo_base64: str
-
-
-@app.post("/validar-base64")
-def validar_base64(entrada: EntradaBase64) -> dict:
-    """Valida uma planilha enviada como base64 num corpo JSON.
-
-    Alternativa ao multipart para ferramentas onde montar multipart é
-    trabalhoso: envie {nome_arquivo, conteudo_base64}.
-    """
-    try:
-        conteudo = base64.b64decode(entrada.conteudo_base64, validate=True)
-    except (binascii.Error, ValueError):
-        raise HTTPException(status_code=400, detail="conteudo_base64 inválido.")
-    return _processar(conteudo)
 
 
 @app.get("/download/{job_id}")
