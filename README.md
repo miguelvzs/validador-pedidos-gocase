@@ -330,7 +330,7 @@ Os relatórios de cada `job_id` vivem 1 hora e são apagados automaticamente
 
 > **⚠️ Escopo do business case — API sem autenticação.** A API sobe **aberta**,
 > por decisão de escopo desta entrega. Em `localhost` é inofensivo. Quando
-> hospedada publicamente (ver [`DEPLOY.md`](DEPLOY.md)), a URL deve ser usada
+> hospedada publicamente, a URL deve ser usada
 > **apenas com a planilha de exemplo (dados sintéticos)** — **não envie pedidos
 > reais** (nome, e-mail, endereço = dados pessoais) para a URL pública sem antes
 > adicionar autenticação por API key. É um passo consciente do roadmap, não um

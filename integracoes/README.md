@@ -60,7 +60,7 @@ na máquina de cada usuário. Dois modelos:
 
 O workflow entregue já aponta para a **URL pública fixa** hospedada no Render
 (`https://validador-pedidos-gocase.onrender.com`), então **importa e roda em
-qualquer máquina sem editar nada nem instalar a API** — ver `DEPLOY.md`. Para o
+qualquer máquina sem editar nada nem instalar a API**. Para o
 modelo portátil (localhost), troque só a URL do nó **POST /validar**.
 
 > **Demo sem autenticação:** a URL pública é aberta. Use apenas com a planilha de
