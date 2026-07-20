@@ -63,7 +63,10 @@ próprio n8n. Portável por construção.
 
 ## n8n (caminho principal na GoCase)
 
-A API já está publicada — nada para instalar ou implantar.
+A API já está publicada — nada para instalar ou implantar. O único pré-requisito
+é ter acesso a uma instância do n8n, onde o fluxo é importado uma vez.
+
+Para o primeiro teste, use `exemplo/pedidos_exemplo.xlsx`, incluído no projeto.
 
 > **Primeira execução:** o serviço hiberna em plano gratuito. A primeira
 > chamada do dia leva ~50s para acordar; se o nó acusar tempo esgotado, repita.

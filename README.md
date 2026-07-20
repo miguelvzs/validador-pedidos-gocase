@@ -30,12 +30,20 @@ de centavos, uma duplicata separada por dezenas de linhas.
 
 ## Como o operador usa
 
-1. Abre o formulário do fluxo no navegador.
+1. Abre o formulário no navegador.
 2. Sobe a planilha `.xlsx`.
 3. Recebe de volta um `.zip` com as três planilhas prontas.
 
 Nada é instalado na máquina de ninguém: o processamento roda no servidor e o
 resultado volta pelo navegador.
+
+**O formulário é publicado pelo fluxo n8n**, que acompanha o projeto em
+[`integracoes/`](integracoes/README.md) e é importado uma única vez. Quem não
+utiliza n8n pode consumir a API diretamente — o contrato está no mesmo guia.
+
+Para experimentar sem preparar dados, o repositório inclui
+[`exemplo/pedidos_exemplo.xlsx`](exemplo/pedidos_exemplo.xlsx): 50 pedidos, dos
+quais 10 contêm defeitos representativos dos que ocorrem na operação.
 
 > **Primeira execução do dia.** O serviço está hospedado em plano gratuito e
 > hiberna após alguns minutos sem uso. A primeira chamada leva cerca de 50
