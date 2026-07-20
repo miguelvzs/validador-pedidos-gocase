@@ -67,6 +67,9 @@ próprio n8n. Portável por construção.
 
 A API já está publicada — nada para instalar ou implantar.
 
+> **Primeira execução:** o serviço hiberna em plano gratuito. A primeira
+> chamada do dia leva ~50s para acordar; se o nó acusar tempo esgotado, repita.
+
 1. Importe `n8n_validador_workflow.json` (menu → **Import from File**).
 2. Clique em **Execute workflow**. O nó **Upload da planilha** abre um
    formulário no navegador — abra a URL que o n8n mostra.

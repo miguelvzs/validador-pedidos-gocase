@@ -1,7 +1,10 @@
 """Testa o fluxo completo do agente e verifica se os outputs foram gerados corretamente."""
 
 import io
+import json
+import subprocess
 import sys
+import threading
 import zipfile
 from pathlib import Path
 
@@ -32,7 +35,7 @@ def _falha(msg: str) -> None:
 
 def main() -> int:
     passaram = 0
-    total_testes = 11
+    total_testes = 13
 
     # 1. Gerar dados de exemplo.
     gerar_planilha_exemplo()
@@ -115,6 +118,9 @@ def main() -> int:
     # 9-11. API HTTP — o caminho realmente usado em produção.
     passaram += _testar_api(CAMINHO_ENTRADA.read_bytes())
 
+    # 12-13. MCP Server — a superfície para clientes de IA.
+    passaram += _testar_mcp()
+
     print()
     if passaram == total_testes:
         print(f"Todos os {total_testes} testes passaram ✓")
@@ -176,6 +182,81 @@ def _testar_api(planilha: bytes) -> int:
         passaram += 1
     else:
         _falha(f"API deveria responder 422 para planilha inválida, veio {erro.status_code}")
+
+    return passaram
+
+
+def _testar_mcp() -> int:
+    """Conversa com o MCP Server pelo protocolo real e devolve quantos passaram.
+
+    Sobe `mcp_server.py` como subprocesso, faz o handshake JSON-RPC por stdio e
+    confere que as ferramentas existem e respondem — a mesma coisa que um
+    cliente de IA faz ao se conectar.
+    """
+    pedidos = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+         "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                    "clientInfo": {"name": "testar", "version": "1.0"}}},
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+         "params": {"name": "validar_pedidos", "arguments": {}}},
+    ]
+    processo = subprocess.Popen(
+        [sys.executable, "mcp_server.py"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        text=True, encoding="utf-8", errors="replace",
+    )
+
+    # Rede de segurança: se o servidor travar, encerra em vez de pendurar o teste.
+    vigia = threading.Timer(120, processo.kill)
+    vigia.start()
+
+    respostas = {}
+    try:
+        for pedido in pedidos:
+            processo.stdin.write(json.dumps(pedido) + "\n")
+        processo.stdin.flush()
+
+        # Lê até a resposta da última chamada. O stdin fica aberto: fechá-lo
+        # antes encerraria o servidor e a resposta se perderia.
+        for linha in processo.stdout:
+            linha = linha.strip()
+            if not linha:
+                continue
+            try:
+                msg = json.loads(linha)
+            except json.JSONDecodeError:
+                continue
+            if msg.get("id") is not None:
+                respostas[msg["id"]] = msg
+            if 3 in respostas:
+                break
+    except (BrokenPipeError, OSError):
+        pass
+    finally:
+        vigia.cancel()
+        processo.kill()
+        processo.wait()
+
+    passaram = 0
+
+    # 12. Handshake e catálogo de ferramentas.
+    ferramentas = respostas.get(2, {}).get("result", {}).get("tools", [])
+    if len(ferramentas) == 5:
+        _ok(f"MCP responde com {len(ferramentas)} ferramentas")
+        passaram += 1
+    else:
+        _falha(f"MCP — esperado 5 ferramentas, veio {len(ferramentas)}")
+
+    # 13. Uma ferramenta executada de verdade, ponta a ponta.
+    conteudo = respostas.get(3, {}).get("result", {}).get("content", [])
+    texto = conteudo[0]["text"] if conteudo else ""
+    if "Total processados" in texto:
+        _ok("MCP executa validar_pedidos e devolve o resumo")
+        passaram += 1
+    else:
+        _falha("MCP — validar_pedidos não devolveu o resumo esperado")
 
     return passaram
 

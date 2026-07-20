@@ -37,6 +37,11 @@ de centavos, uma duplicata separada por dezenas de linhas.
 Nada é instalado na máquina de ninguém: o processamento roda no servidor e o
 resultado volta pelo navegador.
 
+> **Primeira execução do dia.** O serviço está hospedado em plano gratuito e
+> hiberna após alguns minutos sem uso. A primeira chamada leva cerca de 50
+> segundos para acordar o servidor; as seguintes respondem em menos de 1
+> segundo. Se o fluxo acusar tempo esgotado na primeira tentativa, basta repetir.
+
 ---
 
 ## Resultado medido
@@ -184,6 +189,28 @@ Uma lógica de validação, três superfícies — sem regra duplicada.
 | **API HTTP** | Qualquer sistema | HTTP + JSON padrão, sem SDK. Contrato em `integracoes/README.md`. |
 | **MCP** | Ferramentas de IA | 5 ferramentas chamáveis por linguagem natural (ex.: Claude Desktop). |
 
+### Conectando o MCP a um cliente de IA
+
+O n8n executa a automação em lote; o MCP permite **interrogá-la** em linguagem
+natural — *"quantos pedidos foram barrados e por quê?"*. Para habilitar num
+cliente compatível (Claude Desktop, por exemplo), aponte-o para o servidor:
+
+```json
+{
+  "mcpServers": {
+    "validador-gocase": {
+      "command": "python",
+      "args": ["mcp_server.py"],
+      "cwd": "caminho/para/validador-pedidos-gocase"
+    }
+  }
+}
+```
+
+Ferramentas expostas: `validar_pedidos`, `consultar_resumo`,
+`analisar_rejeitados`, `revalidar_com_correcoes` e `gerar_dados_exemplo`, mais
+um prompt guia para o ciclo de correção.
+
 A integração não amarra a ferramenta: por ser HTTP puro, Make, Power Automate ou
 código próprio consomem a mesma API. O n8n é o caminho documentado e testado,
 por ser o padrão na GoCase.
@@ -207,11 +234,13 @@ padrões embutidos.
 
 ## Qualidade
 
-`testar.py` executa **11 verificações** de ponta a ponta: geração da planilha,
+`testar.py` executa **13 verificações** de ponta a ponta: geração da planilha,
 execução do fluxo, existência e conteúdo das 3 planilhas e do log, consistência
 (`aprovados + reprovados = total`), presença de motivo em todos os reprovados e
 o comportamento da API — validação, download do pacote e recusa de planilha fora
-do formato com erro legível em vez de falha genérica.
+do formato com erro legível em vez de falha genérica — e o MCP Server, que é
+exercitado pelo protocolo real: handshake, catálogo de ferramentas e uma
+ferramenta executada de ponta a ponta.
 
 Outras salvaguardas embutidas: relatório aberto no Excel é tratado com novas
 tentativas e mensagem clara; correção malformada vinda da IA é descartada sem
