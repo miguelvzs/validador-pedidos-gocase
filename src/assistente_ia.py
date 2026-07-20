@@ -1,9 +1,9 @@
-"""Camada de assistência por IA, exposta via MCP.
+"""Camada de assistência por IA, exposta por HTTP e por MCP.
 
-Filosofia: o servidor MCP não embute um modelo próprio nem exige chave de API.
-Ele prepara os pedidos rejeitados num formato que a IA conectada (Claude
-Desktop, Cursor, etc.) consegue raciocinar, e aceita de volta as correções
-propostas para revalidar — fechando o ciclo rejeição → correção → aprovação.
+Este módulo não conversa com nenhum modelo: prepara os pedidos rejeitados num
+formato interpretável e aplica as correções que voltam, fechando o ciclo
+rejeição → correção → aprovação. Quem chama o modelo é a superfície de entrada
+— a API (com a chave do servidor) ou o cliente MCP (com o modelo dele).
 
 Divisão de trabalho:
 - Erros MECÂNICOS (valor_total que não fecha, espaços sobrando) recebem uma

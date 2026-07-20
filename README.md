@@ -1,103 +1,144 @@
 # Validador de Pedidos — GoCase
 
-Automação em Python para **validação e organização de pedidos de fábrica**.
-Lê uma planilha de pedidos, separa os válidos dos rejeitados (registrando o
-motivo de cada rejeição), classifica os válidos por prioridade de prazo e gera
-relatórios Excel formatados prontos para o chão de fábrica.
+Automação que atua como **filtro de qualidade entre a captação de pedidos e o
+chão de fábrica**: lê a planilha de pedidos, barra o que está inconsistente
+explicando o motivo, prioriza o que é válido pelo aperto do prazo e ainda tenta
+**recuperar automaticamente**, com IA, os pedidos que foram barrados.
 
-Projeto desenvolvido como **business case** para o processo seletivo de Estágio
-em RPA na **GoCase (GoGroup)** — varejo digital que fabrica produtos
-personalizados sob demanda em Extrema/MG.
+Business case para o processo seletivo de Estágio em RPA na **GoCase (GoGroup)**.
+Área de negócio: Operações de Fábrica.
 
-Uma lógica de validação, **consumida de forma centralizada** — o núcleo roda num
-lugar só e ninguém instala nada na própria máquina:
-
-- **API HTTP (FastAPI)** — núcleo de serviço; consumível por qualquer cliente
-  HTTP. Inclui os endpoints de correção por IA (`/analisar-rejeitados`,
-  `/revalidar`), antes só disponíveis via MCP.
-- **Low-code (n8n e afins)** — um fluxo chama a API ao chegar um arquivo. O n8n
-  é o caminho principal na GoCase e tem workflow pronto (ver `integracoes/`);
-  como a API é HTTP puro, Make, Power Automate ou Zapier consomem igual.
-- **MCP Server** — chamável por qualquer ferramenta de IA (Claude Desktop, etc.),
-  incluindo a correção assistida de rejeitados.
-
-Para desenvolvimento/testes locais ainda existe o modo **terminal**
-(`python main.py`), mas o uso real é centralizado pela API.
+**Serviço no ar:** `https://validador-pedidos-gocase.onrender.com`
 
 ---
 
-## Índice
+## O problema
 
-- [Início rápido](#início-rápido)
-- [O problema que resolve](#o-problema-que-resolve)
-- [Fluxo de execução](#fluxo-de-execução)
-- [Arquitetura](#arquitetura)
-- [Formato da planilha de entrada](#formato-da-planilha-de-entrada)
-- [Regras de validação](#regras-de-validação)
-- [Classificação de prioridade](#classificação-de-prioridade)
-- [Configuração (config.yaml)](#configuração-configyaml)
-- [Relatórios gerados](#relatórios-gerados)
-- [Modos de uso](#modos-de-uso)
-- [Decisões de design](#decisões-de-design)
-- [Testes](#testes)
-- [Solução de problemas](#solução-de-problemas)
-- [Estrutura de arquivos](#estrutura-de-arquivos)
-- [Requisitos](#requisitos)
+Na produção sob demanda, cada pedido vira uma ordem de produção física. Um
+pedido com dado quebrado não é só um registro errado — é material personalizado
+gasto, hora-máquina perdida e cliente sem receber.
+
+Os pedidos chegam de vários canais (site, marketplace, B2B, loja física), cada
+um com um nível diferente de validação na origem. O resultado é uma planilha
+onde convivem pedidos perfeitos e pedidos com cliente sem nome, e-mail quebrado,
+quantidade zerada, valor que não fecha, prazo vencido ou duplicidade.
+
+Conferir isso à mão é lento, cansativo e deixa passar erro sutil — uma diferença
+de centavos, uma duplicata separada por dezenas de linhas.
 
 ---
 
-## Início rápido
+## Como o operador usa
 
-Execute **de dentro da pasta do projeto** — os comandos falham com
-`No such file or directory` se rodados de outro diretório (ex.: `C:\Users\SeuNome`).
+1. Abre o formulário do fluxo no navegador.
+2. Sobe a planilha `.xlsx`.
+3. Recebe de volta um `.zip` com as três planilhas prontas.
 
-```bash
-pip install -r requirements.txt --break-system-packages
-python main.py
-```
-
-Os resultados aparecem na pasta `output/`. É só isso — veja a
-[nota sobre geração automática](#nota-geração-automática-de-dados) abaixo para
-entender por que funciona sem preparar dados antes.
+Nada é instalado na máquina de ninguém: o processamento roda no servidor e o
+resultado volta pelo navegador.
 
 ---
 
-## O problema que resolve
+## Resultado medido
 
-Numa operação de produção sob demanda, pedidos chegam de vários canais (site,
-marketplace, B2B, loja física) e nem todos estão prontos para ir à fábrica:
-cliente sem nome, email quebrado, quantidade zerada, valor que não fecha, prazo
-já vencido, pedido duplicado. Enviar esses pedidos para produção gera
-retrabalho, desperdício de material e atraso.
+Lote de 50 pedidos, com 10 problemas reais:
 
-Este agente atua como um **filtro automático antes da produção**:
-
-1. Lê a planilha exportada do e-commerce.
-2. **Rejeita** o que está inconsistente, dizendo exatamente o porquê.
-3. **Prioriza** o que é válido pelo aperto do prazo.
-4. Entrega planilhas prontas para a equipe agir.
+| Métrica | Valor |
+|---|---|
+| Pedidos processados | 50 |
+| Reprovados na validação | 10 |
+| **Recuperados pela IA** | **5** |
+| Válidos ao final | 45 (90%) |
+| Tempo de processamento | menos de 1 segundo |
 
 ---
 
-## Fluxo de execução
+## Regras de validação
 
-```
-┌─────────────┐   ┌────────────┐   ┌──────────────┐   ┌───────────────┐   ┌──────────────┐
-│  1. Leitura │──▶│ 2. Validar │──▶│ 3. Organizar │──▶│ 4. Relatórios │──▶│ 5. Notificar │
-│  (planilha) │   │  (regras)  │   │ (prioridade) │   │    (Excel)    │   │   (resumo)   │
-└─────────────┘   └────────────┘   └──────────────┘   └───────────────┘   └──────────────┘
-       │                 │                                     │
-   leitor.py     validador.py                            relatorio.py
-                          │
-              ┌───────────┴───────────┐
-              ▼                       ▼
-       df_validos            df_rejeitados
-       (organizados)         (+ motivo_rejeicao)
-```
+Cada pedido é avaliado contra **todas** as regras. Um pedido pode acumular
+vários motivos, concatenados na coluna `motivo_rejeicao` — a gestão vê a lista
+completa de problemas de uma vez, não um erro por reprocessamento.
 
-Esse fluxo vive em **uma única função** — `executar_pipeline` (`src/agente.py`) —
-usada tanto pelo modo arquivo quanto pela API. Cada consumidor só decide o
-destino dos relatórios e como reportar falhas (log no terminal, HTTP 422 na API).
+| # | Campo | Regra |
+|---|---|---|
+| 1 | `id_pedido` | Não vazio e não duplicado. Na duplicata, a 2ª ocorrência é reprovada. |
+| 2 | `cliente` | Não vazio. |
+| 3 | `email` | Formato `texto@texto.dominio`. |
+| 4 | `quantidade` | Inteiro positivo. |
+| 5 | `valor_unitario` | Positivo. |
+| 6 | `valor_total` | Bate com `quantidade × valor_unitario` (tolerância de R$ 0,02). |
+| 7 | `prazo_entrega` | Não pode estar no passado. |
+| 8 | `produto` | Não vazio. |
+| 9 | `sku` | Não vazio. |
+
+### Prioridade de produção
+
+Os aprovados recebem `dias_restantes` e entram numa fila ordenada por urgência —
+os mais apertados primeiro.
+
+| Prioridade | Dias até o prazo | Cor na planilha |
+|---|---|---|
+| URGENTE | 0 a 2 | Vermelho claro |
+| ALTA | 3 a 5 | Laranja claro |
+| NORMAL | 6 a 10 | Verde claro |
+| BAIXA | 11 ou mais | Sem cor |
+
+---
+
+## O que é entregue
+
+| Planilha | Conteúdo |
+|---|---|
+| `pedidos_validados.xlsx` | Aprovados, na ordem de produção, coloridos por prioridade. |
+| `pedidos_rejeitados.xlsx` | Reprovados, com o motivo exato de cada um. |
+| `resumo_execucao.xlsx` | Métricas do lote: totais, percentuais, prioridades, canais, valores. |
+
+---
+
+## Camada de IA — recuperação de pedidos reprovados
+
+Barrar pedido resolve metade do problema. A outra metade é **recuperá-lo**.
+
+A divisão de trabalho é explícita:
+
+- **Erro mecânico** (valor que não fecha, espaço sobrando, e-mail a normalizar)
+  → resolvido por regra, sem IA.
+- **Erro semântico** (nome faltando, e-mail incompleto) → a IA infere cruzando
+  os outros campos do próprio pedido.
+- **Dado impossível de deduzir** → sinalizado para revisão humana, nunca inventado.
+
+### O que a IA corrigiu na execução real
+
+| Pedido | Correção | De onde deduziu |
+|---|---|---|
+| PED-00003 | `cliente: '' → 'Camila Rodrigues'` | do e-mail `camila.rodrigues@...` |
+| PED-00016 | `cliente: '' → 'Patricia Gomes'` | do e-mail `patricia.gomes@...` |
+| PED-00034 | `cliente: '' → 'Daniel Oliveira'` | do e-mail `daniel.oliveira@...` |
+| PED-00022 | `email: 'cliente@' → 'yasmin.monteiro@gmail.com'` | do nome do cliente |
+| PED-00008 | `email: 'clientegocase.com' → 'cliente@gocase.com'` | faltava o `@` |
+
+### O que ela corretamente não resolveu
+
+Dos 10 reprovados, 5 permaneceram — e é assim que deve ser:
+
+- **2 duplicatas** — exigem decisão humana sobre qual pedido vale.
+- **1 prazo vencido** — não é erro de dado, é problema operacional.
+- **2 valores incoerentes** — a IA ajustou a quantidade, mas o `valor_total` não
+  fechou, então o pedido **continuou reprovado**. A validação não abre exceção
+  para a IA.
+
+### Trilha de auditoria
+
+Correção automática só é confiável se for auditável. A IA **assina** o que fez,
+dentro das planilhas entregues:
+
+- Coluna `corrigido_por_ia` marca os pedidos recuperados.
+- Coluna `correcao_ia` registra o antes → depois de cada campo alterado.
+- O resumo traz a linha **"Pedidos recuperados pela IA"**.
+
+Deduzir o nome a partir do e-mail é uma **inferência plausível, não um dado
+confirmado**. Por isso a trilha existe: a IA acelera a recuperação e a decisão
+final continua conferível por uma pessoa.
 
 ---
 
@@ -108,332 +149,85 @@ isoladamente.
 
 | Módulo | Responsabilidade |
 |---|---|
-| `src/config.py` | Carrega `config.yaml` (regras externas) com fallback embutido. |
-| `src/gerar_dados.py` | **Fixture de teste/demo.** Gera planilha simulada com erros propositais. *Não é componente de produção.* |
-| `src/leitor.py` | Lê o Excel, tipa colunas (datas, números), valida a presença das colunas esperadas. |
-| `src/validador.py` | Aplica as 9 regras de negócio; separa válidos de rejeitados; acumula motivos. |
-| `src/organizador.py` | Calcula `dias_restantes` e `prioridade`; ordena os válidos para produção. |
-| `src/relatorio.py` | Gera os 3 Excel formatados (cores por prioridade, bordas, freeze, larguras). |
-| `src/assistente_ia.py` | Camada de IA: prepara rejeitados e aplica correções (via MCP). |
-| `src/agente.py` | `executar_pipeline` (fluxo único), `montar_resumo` e o `AgenteValidador` do modo arquivo. |
-| `main.py` | Entrada standalone (terminal, dev/testes). |
-| `mcp_server.py` | Entrada MCP Server (stdio, 5 tools + prompt). |
-| `api.py` | Entrada HTTP (FastAPI): validação, download e correção por IA. |
+| `src/leitor.py` | Lê o Excel, tipa colunas e confere o schema esperado. |
+| `src/validador.py` | Aplica as 9 regras; separa aprovados de reprovados; acumula motivos. |
+| `src/organizador.py` | Calcula `dias_restantes` e prioridade; ordena a fila. |
+| `src/relatorio.py` | Gera as 3 planilhas formatadas. |
+| `src/assistente_ia.py` | Prepara os reprovados para a IA, aplica as correções e marca a autoria. |
+| `src/config.py` | Carrega `config.yaml` com fallback embutido. |
+| `src/agente.py` | `executar_pipeline`: o fluxo completo, em uma função só. |
+| `src/gerar_dados.py` | Gera a planilha de demonstração. Ferramenta de teste, não de produção. |
+| `api.py` | Superfície HTTP: validação, download e correção por IA. |
+| `mcp_server.py` | Superfície MCP: 5 ferramentas + 1 prompt para clientes de IA. |
+| `main.py` | Execução por terminal, para desenvolvimento. |
 
-### Fonte única de verdade
+**Fonte única de verdade.** O fluxo vive em `executar_pipeline`; as métricas são
+montadas uma vez e reaproveitadas pelo relatório, pelo log e pela API. Nomes,
+ordem e cores das faixas de prioridade existem apenas no `config.yaml`.
 
-As métricas do resumo são montadas uma vez pelo `agente` e reusadas pelo
-relatório, log e cache MCP. Os nomes, a ordem e as cores das faixas de
-prioridade vivem só no `config.yaml` — renomear ou recolorir uma faixa reflete
-em todo o sistema, sem código hardcoded.
+### Tecnologias
+
+Python 3.10+ · pandas e openpyxl (planilhas) · FastAPI e uvicorn (API HTTP) ·
+PyYAML (configuração externa) · httpx (chamada à IA) · MCP (integração com
+clientes de IA) · Anthropic Claude (correção assistida) · n8n (orquestração
+low-code) · Render (hospedagem).
 
 ---
 
-## Formato da planilha de entrada
+## Formas de consumo
 
-`data/pedidos_entrada.xlsx` — uma linha por pedido, com estas colunas:
+Uma lógica de validação, três superfícies — sem regra duplicada.
 
-| Coluna | Tipo | Exemplo |
+| Superfície | Para quem | Como |
 |---|---|---|
-| `id_pedido` | texto | `PED-00001` |
-| `data_pedido` | data | `2026-07-14` |
-| `cliente` | texto | `Ana Carolina` |
-| `email` | texto | `ana.carolina@gmail.com` |
-| `produto` | texto | `Case iPhone 15` |
-| `sku` | texto | `CSE-IPH15-4821` |
-| `quantidade` | inteiro | `3` |
-| `valor_unitario` | número | `89.90` |
-| `valor_total` | número | `269.70` |
-| `canal` | texto | `site` |
-| `endereco` | texto | `Rua das Flores, 123 - Centro, São Paulo/SP` |
-| `prazo_entrega` | data | `2026-07-25` |
+| **n8n** | Operação | Formulário de upload; devolve o `.zip` no navegador. Workflow pronto em `integracoes/`. |
+| **API HTTP** | Qualquer sistema | HTTP + JSON padrão, sem SDK. Contrato em `integracoes/README.md`. |
+| **MCP** | Ferramentas de IA | 5 ferramentas chamáveis por linguagem natural (ex.: Claude Desktop). |
 
-Faltar qualquer coluna faz o leitor parar cedo com `ValueError` dizendo qual
-coluna faltou.
+A integração não amarra a ferramenta: por ser HTTP puro, Make, Power Automate ou
+código próprio consomem a mesma API. O n8n é o caminho documentado e testado,
+por ser o padrão na GoCase.
 
 ---
 
-## Regras de validação
+## Configuração sem código
 
-Cada pedido é avaliado contra **todas** as regras; um pedido pode acumular
-vários motivos, concatenados por `; ` na coluna `motivo_rejeicao`.
+Regras de negócio ficam fora do código, em `config.yaml`: tolerância de valor,
+padrão de e-mail, colunas obrigatórias e as faixas de prioridade (nomes,
+intervalos e cores). Um gestor ajusta limites sem abrir Python.
 
-| # | Campo | Regra |
-|---|---|---|
-| 1 | `id_pedido` | Não vazio e não duplicado. Na duplicata, a **2ª ocorrência** é rejeitada. |
-| 2 | `cliente` | Não vazio nem só espaços. |
-| 3 | `email` | Formato `texto@texto.dominio` (regex `^[^@]+@[^@]+\.[^@]+$`). |
-| 4 | `quantidade` | Inteiro positivo (> 0). |
-| 5 | `valor_unitario` | Positivo (> 0). |
-| 6 | `valor_total` | Bate com `quantidade × valor_unitario` (tolerância R$ 0,02). |
-| 7 | `prazo_entrega` | Não pode estar no passado. |
-| 8 | `produto` | Não vazio. |
-| 9 | `sku` | Não vazio. |
+Há ainda o `mapa_colunas`, que traduz os cabeçalhos de um export real do
+e-commerce/ERP para os nomes esperados — planilha diferente não exige código
+novo.
 
-Exemplo de `motivo_rejeicao` com múltiplos erros:
-`Cliente vazio; Email inválido: formato incorreto`
+Configuração ausente ou inválida não derruba nada: o sistema avisa e usa os
+padrões embutidos.
 
 ---
 
-## Classificação de prioridade
+## Qualidade
 
-Pedidos válidos ganham `dias_restantes = (prazo_entrega - hoje)` e uma faixa:
+`testar.py` executa **11 verificações** de ponta a ponta: geração da planilha,
+execução do fluxo, existência e conteúdo das 3 planilhas e do log, consistência
+(`aprovados + reprovados = total`), presença de motivo em todos os reprovados e
+o comportamento da API — validação, download do pacote e recusa de planilha fora
+do formato com erro legível em vez de falha genérica.
 
-| Prioridade | Dias até o prazo | Cor no relatório |
-|---|---|---|
-| URGENTE | 0–2 | Vermelho claro |
-| ALTA | 3–5 | Laranja claro |
-| NORMAL | 6–10 | Verde claro |
-| BAIXA | 11+ | Sem cor |
-
-Ordenação final: URGENTE primeiro; dentro da mesma faixa, prazo mais apertado
-antes (`dias_restantes` crescente).
+Outras salvaguardas embutidas: relatório aberto no Excel é tratado com novas
+tentativas e mensagem clara; correção malformada vinda da IA é descartada sem
+derrubar o lote; arquivos temporários do servidor expiram sozinhos em 1 hora.
 
 ---
 
-## Configuração (config.yaml)
+## Escopo e evolução
 
-As regras de negócio ficam **externas ao código**, em `config.yaml` — um gestor
-não-técnico ajusta limites sem tocar em Python:
+**Escopo desta entrega.** A API está publicada **sem autenticação**, por decisão
+de escopo do business case. A URL deve ser usada apenas com a planilha de
+demonstração (dados sintéticos); pedidos reais contêm dados pessoais e exigem
+autenticação por chave antes de trafegar por uma URL aberta. É um passo
+consciente do roadmap, não um esquecimento.
 
-```yaml
-validacao:
-  tolerancia_valor: 0.02          # diferença aceita em valor_total
-  regex_email: '^[^@]+@[^@]+\.[^@]+$'
-  mapa_colunas: {}                # renomeia colunas da SUA planilha → canônicas
-  colunas_obrigatorias: [ ... ]   # colunas exigidas na planilha
-prioridade:
-  faixas:                         # dias até o prazo → faixa
-    - { nome: URGENTE, min: 0, max: 2 }
-    - { nome: ALTA,    min: 3, max: 5 }
-    - { nome: NORMAL,  min: 6, max: 10 }
-    - { nome: BAIXA,   min: 11, max: null }   # null = sem teto
-```
-
-Se o arquivo faltar ou uma chave estiver ausente, o sistema cai nos **padrões
-embutidos** (`src/config.py`) — nunca quebra por config incompleta. YAML
-inválido é avisado no console (suas mudanças são ignoradas). Muda o
-comportamento da validação e da priorização sem redeploy.
-
-**Planilha com outros cabeçalhos?** Preencha `mapa_colunas` para processar um
-export real do e-commerce/ERP sem editar código:
-
-```yaml
-mapa_colunas:
-  "Pedido": id_pedido
-  "Nome do Cliente": cliente
-  "Qtd": quantidade
-```
-
----
-
-## Relatórios gerados
-
-Todos em `output/`.
-
-**Para o operador** — as 3 planilhas que interessam ao chão de fábrica:
-
-| Arquivo | Conteúdo |
-|---|---|
-| `pedidos_validados.xlsx` | Pedidos aprovados, linhas coloridas por prioridade, valores formatados, cabeçalho congelado. |
-| `pedidos_rejeitados.xlsx` | Pedidos com erro + coluna `motivo_rejeicao` em vermelho/bold. |
-| `resumo_execucao.xlsx` | Métricas consolidadas (totais, %, por prioridade, por canal, valores, tempo). |
-
-**Artefatos internos** — isolados em `output/_sistema/`, fora da visão do
-operador, gerados automaticamente:
-
-| Arquivo | Uso |
-|---|---|
-| `_sistema/log_execucao.log` | Diagnóstico técnico da execução (UTF-8). Para o dev, quando algo falha. |
-| `_sistema/ultimo_resumo.json` | Cache do último resumo; alimenta a tool MCP `consultar_resumo`. Não é aberto por humano. |
-
-Assim o operador abre `output/` e vê apenas as 3 planilhas que importam.
-
----
-
-## Modos de uso
-
-### 1. Terminal (avaliação)
-
-```bash
-cd C:\Users\kenne\Documents\dev\validador-pedidos-gocase
-python main.py
-```
-
-<a name="nota-geração-automática-de-dados"></a>
-> #### ⚠️ Nota: geração automática de dados
->
-> Se `data/pedidos_entrada.xlsx` **não existir**, `main.py` gera
-> automaticamente uma planilha de exemplo (50 pedidos: 40 válidos + 10 com
-> erros propositais) e a processa.
->
-> Isso é **intencional para esta entrega**: o avaliador roda o projeto com um
-> único comando, sem preparar dados antes.
->
-> **Em produção real**, esse comportamento seria removido — o sistema deveria
-> **falhar com mensagem clara** se a planilha estivesse ausente, em vez de
-> fabricar dados. Por isso o gerador (`src/gerar_dados.py`) é uma ferramenta de
-> teste/demo.
-
-### 2. MCP Server (integração com IA)
-
-```bash
-python mcp_server.py
-```
-
-Fala **stdio** (JSON-RPC) e expõe 5 tools + 1 prompt:
-
-| Tool | Função |
-|---|---|
-| `gerar_dados_exemplo` | Gera a planilha simulada (uso de teste/demo). |
-| `validar_pedidos` | Executa o fluxo completo e retorna o resumo formatado. |
-| `consultar_resumo` | Retorna o resumo da última execução, sem reprocessar. |
-| `analisar_rejeitados` | Prepara os rejeitados para a IA corrigir (dados, motivos, sugestões mecânicas). |
-| `revalidar_com_correcoes` | Aplica as correções da IA e revalida o lote, mostrando antes → depois. |
-
-Para conectar no Claude Desktop, aponte a config de MCP para o comando
-`python mcp_server.py` na raiz do projeto. O usuário então pede em linguagem
-natural (ex.: *"valide os pedidos da planilha"*) e a IA chama a tool.
-
-#### Camada de IA — correção assistida de rejeitados
-
-O servidor não embute um modelo próprio nem exige chave de API: a **IA conectada
-é o cérebro**. O fluxo (guiado pelo prompt `corrigir_pedidos_rejeitados`) é:
-
-1. `analisar_rejeitados` devolve cada pedido barrado, seus motivos e as
-   **sugestões mecânicas** já resolvidas por regra (recalcular `valor_total`,
-   remover espaços, normalizar e-mail).
-2. A IA propõe as **correções semânticas** — inferir um nome digitado errado,
-   completar um e-mail, ajustar uma quantidade implausível. Dados que não dão
-   para deduzir (cliente totalmente vazio) são sinalizados para revisão humana,
-   não inventados.
-3. `revalidar_com_correcoes` aplica as correções à planilha de origem, revalida
-   o lote inteiro e relata quantos pedidos foram **recuperados**.
-
-Exemplo real: 2 e-mails inválidos corrigidos → rejeitados 10 → 8, válidos 40 → 42.
-
-### 3. Serviço central (API + web) — zero instalação no cliente
-
-Para uso corporativo, o núcleo roda **num lugar só** e os usuários só falam
-HTTP — sem Python, pip ou bibliotecas na máquina de ninguém. Duas peças:
-
-- **`api.py`** — API HTTP (FastAPI) que expõe o mesmo pipeline:
-  `POST /validar` (envia a planilha, recebe o resumo em JSON + `job_id`) e
-  `GET /download/{job_id}` (baixa os 3 relatórios num `.zip`).
-
-A mesma API serve qualquer cliente HTTP — **n8n** é o caminho usado aqui: um
-fluxo observa uma pasta, chama `POST /validar` e devolve o resultado, sem
-nenhuma dependência no cliente. Docs interativas da API em `http://localhost:8000/docs`.
-
-Os relatórios de cada `job_id` vivem 1 hora e são apagados automaticamente
-(TTL, via `JOBS_TTL_SEGUNDOS`) — o servidor não acumula arquivos temporários.
-
-> **⚠️ Escopo do business case — API sem autenticação.** A API sobe **aberta**,
-> por decisão de escopo desta entrega. Em `localhost` é inofensivo. Quando
-> hospedada publicamente, a URL deve ser usada
-> **apenas com a planilha de exemplo (dados sintéticos)** — **não envie pedidos
-> reais** (nome, e-mail, endereço = dados pessoais) para a URL pública sem antes
-> adicionar autenticação por API key. É um passo consciente do roadmap, não um
-> esquecimento.
-
-Uma lógica de validação, quatro formas de consumo (terminal, MCP, API/web,
-low-code) — sem duplicar regra.
-
----
-
-## Decisões de design
-
-Escolhas que não são óbvias pelo código:
-
-- **Log em `stderr`, não `stdout`.** No modo MCP o `stdout` carrega o protocolo
-  JSON-RPC; qualquer log ali corromperia a comunicação e quebraria o cliente.
-  O `stderr` fica livre para diagnóstico e o console segue legível.
-- **Reconfiguração para UTF-8.** O console Windows usa cp1252 e corrompe acentos
-  (`execu��o`). Os streams são reconfigurados para UTF-8; os arquivos de log já
-  são gravados em UTF-8 explicitamente.
-- **Seed fixa (`random.seed(42)`).** A planilha de exemplo é reproduzível entre
-  execuções — essencial para os testes automatizados serem determinísticos.
-- **Prazo contado a partir de hoje, não da data do pedido.** Se o prazo fosse
-  `data_pedido + N dias`, pedidos antigos cairiam no passado por acidente e
-  quebrariam a meta de "40 válidos". Contar de hoje mantém os 40 válidos e ainda
-  distribui as faixas de prioridade.
-- **Tolerância de R$ 0,02 em `valor_total`.** Soma de floats acumula erro de
-  arredondamento; sem a tolerância, pedidos corretos gerariam falso positivo.
-- **`errors="coerce"` na tipagem.** Valores inválidos viram `NaN`/`NaT` em vez de
-  estourar na leitura — a decisão de rejeitar fica com o validador, não com o
-  leitor.
-
----
-
-## Testes
-
-```bash
-python testar.py
-```
-
-Roda o fluxo completo e verifica **11 pontos**:
-
-1. Planilha de entrada gerada (50 pedidos).
-2. Agente executa sem exceção.
-3. `pedidos_validados.xlsx` existe e tem linhas.
-4. `pedidos_rejeitados.xlsx` existe e tem linhas.
-5. `resumo_execucao.xlsx` existe.
-6. `log_execucao.log` existe e não está vazio.
-7. Consistência: `válidos + rejeitados == total`.
-8. Todos os rejeitados têm `motivo_rejeicao` preenchido.
-9. API `POST /validar` responde com resumo coerente.
-10. API `GET /download` devolve o `.zip` com os 3 relatórios.
-11. API recusa planilha fora do formato com HTTP 422 (não 500).
-
-Saída esperada: `Todos os 11 testes passaram ✓`.
-
----
-
-## Solução de problemas
-
-| Sintoma | Causa provável | Solução |
-|---|---|---|
-| `Colunas obrigatórias ausentes` | Planilha real com cabeçalhos diferentes. | Preencha `mapa_colunas` no [config.yaml](#configuração-configyaml) mapeando seus nomes para os canônicos. |
-| `Não consegui atualizar '...xlsx'` | Relatório aberto no Excel trava a escrita. | Feche o arquivo no Excel; o sistema tenta 3× com aviso antes de falhar. |
-| Relatórios com dados que parecem fictícios | Planilha real ausente → `main.py` gerou exemplo. | Aviso em destaque no console indica isso; coloque a planilha real em `data/` e rode de novo. |
-| `[AVISO] config.yaml inválido` | Erro de indentação no YAML. | Suas mudanças foram ignoradas (usou padrões); corrija a indentação. |
-| Acentos tortos no console (`execu��o`) | Terminal antigo em cp1252. | Já tratado no código; se persistir, rode `chcp 65001` antes. |
-| Cliente MCP não responde | Log poluindo `stdout`. | Já tratado (log vai para `stderr`); verifique se não há `print()` solto. |
-
----
-
-## Estrutura de arquivos
-
-```
-validador-pedidos-gocase/
-├── data/                    ← planilha de entrada (gerada/fornecida)
-├── output/                  ← 3 planilhas do operador
-│   └── _sistema/            ← log + cache JSON (artefatos internos)
-├── src/
-│   ├── config.py            ← carrega config.yaml (com fallback embutido)
-│   ├── gerar_dados.py       ← fixture de teste/demo (NÃO é produção)
-│   ├── leitor.py            ← leitura e tipagem da planilha
-│   ├── validador.py         ← regras de validação
-│   ├── organizador.py       ← classificação por prioridade
-│   ├── relatorio.py         ← geração dos Excel formatados
-│   ├── assistente_ia.py     ← camada de IA: correção assistida via MCP
-│   └── agente.py            ← orquestrador do fluxo
-├── config.yaml              ← regras de negócio editáveis (sem tocar código)
-├── main.py                  ← entrada standalone (terminal)
-├── mcp_server.py            ← entrada MCP Server (5 tools + prompt)
-├── api.py                   ← API HTTP FastAPI (núcleo de serviço)
-├── testar.py                ← testes de fumaça
-├── requirements.txt
-└── README.md
-```
-
----
-
-## Requisitos
-
-- Python 3.10+
-- `pandas >= 2.0.0`, `openpyxl >= 3.1.0`, `mcp >= 1.0.0`, `pyyaml >= 6.0`
-  (ver `requirements.txt`)
-
-Codificação UTF-8 em toda operação de arquivo. Type hints e docstrings em
-português em todo o código.
+**Evolução natural.** Ler os pedidos direto do ERP em vez de planilha; escrever
+o status de volta no sistema de origem; notificação ativa para a gestão quando
+o índice de reprovação subir; histórico entre lotes para detectar duplicidade
+que atravessa execuções.
