@@ -18,8 +18,6 @@ Base (já no ar): `https://validador-pedidos-gocase.onrender.com`
 | `POST` | `/validar` | multipart/form-data, campo **`arquivo`** = .xlsx (n8n, web) | JSON `{ job_id, resumo }` |
 | `GET` | `/download/{job_id}` | — | `.zip` com os 3 relatórios |
 | `GET` | `/download/{job_id}/{tipo}` | tipo = validados\|rejeitados\|resumo | 1 relatório .xlsx |
-| `POST` | `/analisar-rejeitados` | JSON `{ job_id }` | contexto (dados+motivos+sugestões) para a IA corrigir |
-| `POST` | `/revalidar` | JSON `{ job_id, correcoes:[{id_pedido,campo,valor}] }` | novo resumo + `recuperados` (antes→depois) |
 | `POST` | `/corrigir-automatico` | JSON `{ job_id }` | ciclo completo de IA no servidor (sem credencial no cliente) |
 
 Erros: `400` (não é Excel), `422` (planilha com colunas erradas — mensagem

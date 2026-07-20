@@ -209,7 +209,8 @@ cliente compatível (Claude Desktop, por exemplo), aponte-o para o servidor:
 
 Ferramentas expostas: `validar_pedidos`, `consultar_resumo`,
 `analisar_rejeitados`, `revalidar_com_correcoes` e `gerar_dados_exemplo`, mais
-um prompt guia para o ciclo de correção.
+um prompt guia. As duas do meio formam o ciclo de correção assistida: o modelo
+do próprio cliente propõe as correções e o servidor revalida.
 
 A integração não amarra a ferramenta: por ser HTTP puro, Make, Power Automate ou
 código próprio consomem a mesma API. O n8n é o caminho documentado e testado,

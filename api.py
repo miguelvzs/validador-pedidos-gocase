@@ -203,32 +203,8 @@ class JobRef(BaseModel):
     job_id: str
 
 
-@app.post("/analisar-rejeitados")
-def analisar_rejeitados(ref: JobRef) -> dict:
-    """Prepara os rejeitados de um job para correção por IA.
-
-    Retorna o contexto textual (dados, motivos e sugestões mecânicas) que uma
-    IA — via n8n ou MCP — usa para propor as correções, mais o
-    número de rejeitados. Depois, envie as correções para POST /revalidar.
-    """
-    job_dir = JOBS_DIR / ref.job_id
-    rejeitados = job_dir / NOMES_RELATORIOS["rejeitados"]
-    if not rejeitados.exists():
-        raise HTTPException(status_code=404, detail="job_id não encontrado ou expirado.")
-    contexto = montar_contexto_correcao(rejeitados)
-    return {
-        "job_id": ref.job_id,
-        "total_rejeitados": _resumo_do_job(job_dir).get("total_rejeitados"),
-        "contexto": contexto,
-    }
-
-
 def _aplicar_e_reprocessar(job_dir: Path, correcoes: list[dict]) -> dict:
-    """Aplica correções à planilha do job, marca a autoria da IA e revalida.
-
-    Compartilhado por /revalidar (correções vindas de fora) e
-    /corrigir-automatico (correções geradas pelo servidor).
-    """
+    """Aplica correções à planilha do job, marca a autoria da IA e revalida."""
     entrada = job_dir / "entrada.xlsx"
     antes = _resumo_do_job(job_dir).get("total_rejeitados")
 
@@ -253,24 +229,9 @@ def _aplicar_e_reprocessar(job_dir: Path, correcoes: list[dict]) -> dict:
     return resultado
 
 
-class Revalidacao(BaseModel):
-    """Correções propostas pela IA para reprocessar um job."""
+class JobRef(BaseModel):
+    """Referência a um job já validado."""
     job_id: str
-    correcoes: list[dict]  # [{"id_pedido", "campo", "valor"}]
-
-
-@app.post("/revalidar")
-def revalidar(req: Revalidacao) -> dict:
-    """Aplica as correções à planilha do job e revalida o lote inteiro.
-
-    Retorna um novo job com o resumo pós-correção e a comparação antes → depois
-    (quantos pedidos foram recuperados). Fecha o ciclo rejeição → correção →
-    aprovação em qualquer cliente HTTP.
-    """
-    job_dir = JOBS_DIR / req.job_id
-    if not (job_dir / "entrada.xlsx").exists():
-        raise HTTPException(status_code=404, detail="job_id não encontrado ou expirado.")
-    return _aplicar_e_reprocessar(job_dir, req.correcoes)
 
 
 @app.post("/corrigir-automatico")
