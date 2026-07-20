@@ -11,12 +11,11 @@ workflow é específico do n8n, mas as chamadas são as mesmas em qualquer lugar
 
 ## Contrato da API
 
-Base: `http://SEU_SERVIDOR:8000`
+Base (já no ar): `https://validador-pedidos-gocase.onrender.com`
 
 | Método | Rota | Entrada | Saída |
 |---|---|---|---|
 | `POST` | `/validar` | multipart/form-data, campo **`arquivo`** = .xlsx (n8n, web) | JSON `{ job_id, resumo }` |
-| `POST` | `/validar-base64` | JSON `{ nome_arquivo, conteudo_base64 }` | JSON `{ job_id, resumo }` |
 | `GET` | `/download/{job_id}` | — | `.zip` com os 3 relatórios |
 | `GET` | `/download/{job_id}/{tipo}` | tipo = validados\|rejeitados\|resumo | 1 relatório .xlsx |
 | `POST` | `/analisar-rejeitados` | JSON `{ job_id }` | contexto (dados+motivos+sugestões) para a IA corrigir |
@@ -50,18 +49,12 @@ Exemplo do `resumo` retornado:
 
 ## Onde a API roda (universalidade)
 
-A API é a **única** peça que precisa de Python — mas roda **num lugar só**, não
-na máquina de cada usuário. Dois modelos:
+A API é a única peça que precisa de Python — e roda **num lugar só**, já
+publicada. Ninguém instala nada na própria máquina.
 
-- **Central (produção):** a API é hospedada uma vez (servidor/VM/nuvem). Todos os
-  n8n e usuários apontam para essa URL. Ninguém instala nada.
-- **Portátil (demo/avaliação):** API + n8n na mesma máquina → a URL é
-  `http://localhost:8000`. Basta ter a API no ar ali.
-
-O workflow entregue já aponta para a **URL pública fixa** hospedada no Render
-(`https://validador-pedidos-gocase.onrender.com`), então **importa e roda em
-qualquer máquina sem editar nada nem instalar a API**. Para o
-modelo portátil (localhost), troque só a URL do nó **POST /validar**.
+O workflow entregue aponta para essa **URL pública fixa**, então **importa e
+roda em qualquer máquina sem editar nada**. Para apontar a outro servidor,
+basta trocar a URL dos nós HTTP.
 
 > **Demo sem autenticação:** a URL pública é aberta. Use apenas com a planilha de
 > exemplo (dados sintéticos); não envie pedidos reais sem adicionar API key.
@@ -72,11 +65,12 @@ próprio n8n. Portável por construção.
 
 ## n8n (caminho principal na GoCase)
 
-1. Suba a API na máquina: `uvicorn api:app --host 0.0.0.0 --port 8000`.
-2. Importe `n8n_validador_workflow.json` (menu → **Import from File**).
-3. Clique em **Execute workflow** (ou ative o workflow). O nó **Upload da
-   planilha** abre um formulário no navegador — abra a URL que o n8n mostra.
-4. Suba o `.xlsx` no formulário. O fluxo (**um único workflow**, 6 nós):
+A API já está publicada — nada para instalar ou implantar.
+
+1. Importe `n8n_validador_workflow.json` (menu → **Import from File**).
+2. Clique em **Execute workflow**. O nó **Upload da planilha** abre um
+   formulário no navegador — abra a URL que o n8n mostra.
+3. Suba o `.xlsx` no formulário. O fluxo (**um único workflow**, 6 nós):
    - **Upload da planilha** (Form Trigger) — recebe o arquivo como binário `arquivo`.
    - **POST /validar** — envia para a API e recebe o resumo em JSON.
    - **Tem rejeitados?** (IF) — se houver, tenta a correção por IA; se não, vai
